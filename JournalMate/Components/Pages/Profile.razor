@@ -1,0 +1,131 @@
+@page "/profile"
+@inject JournalMate.Services.AppCurrentState AppState
+@implements IDisposable
+
+<div class="profile-page @(AppState.IsDarkMode ? "dark-theme" : "light-theme")">
+    <div class="page-header">
+        <h1> Profile</h1>
+        <p>Manage your personal information</p>
+    </div>
+    
+    <div class="profile-content">
+        <div class="coming-soon">
+            <i class="bi bi-person-circle"></i>
+            <h3>Profile Management Coming Soon</h3>
+            <p>This feature is under development</p>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Light Theme */
+    .profile-page.light-theme {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .light-theme .page-header h1,
+    .light-theme .page-header p {
+        color: #ffffff;
+    }
+
+    .light-theme .page-header p {
+        opacity: 0.9;
+    }
+
+    .light-theme .profile-content {
+        background: rgba(255, 255, 255, 0.95);
+    }
+
+    .light-theme .coming-soon i {
+        color: #d1d5db;
+    }
+
+    .light-theme .coming-soon h3 {
+        color: #1f2937;
+    }
+
+    .light-theme .coming-soon p {
+        color: #6b7280;
+    }
+
+    /* Dark Theme */
+    .profile-page.dark-theme {
+        background: #0f1419;
+    }
+
+    .dark-theme .page-header h1 {
+        color: #e2e8f0;
+    }
+
+    .dark-theme .page-header p {
+        color: rgba(226, 232, 240, 0.7);
+    }
+
+    .dark-theme .profile-content {
+        background: #1a202c;
+    }
+
+    .dark-theme .coming-soon i {
+        color: rgba(226, 232, 240, 0.3);
+    }
+
+    .dark-theme .coming-soon h3 {
+        color: #e2e8f0;
+    }
+
+    .dark-theme .coming-soon p {
+        color: rgba(226, 232, 240, 0.6);
+    }
+
+    /* Base Styles */
+    .profile-page {
+        min-height: 100vh;
+        padding: 40px;
+    }
+
+    .page-header {
+        margin-bottom: 32px;
+    }
+
+    .page-header h1 {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+
+    .page-header p {
+        font-size: 1rem;
+    }
+
+    .profile-content {
+        border-radius: 16px;
+        padding: 80px 40px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .coming-soon {
+        text-align: center;
+        padding: 40px;
+    }
+
+    .coming-soon i {
+        font-size: 4rem;
+    }
+
+    .coming-soon h3 {
+        margin: 20px 0 10px;
+        font-size: 1.8rem;
+    }
+</style>
+
+@code {
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+    }
+}

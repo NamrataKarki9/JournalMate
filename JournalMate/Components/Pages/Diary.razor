@@ -1,0 +1,656 @@
+﻿@page "/diary"
+@using JournalMaui.Services
+@using JournalMaui.Models
+@inject JournalDatabase Db
+
+<div class="diary-page">
+
+    <!-- Main Content Area -->
+    <div class="diary-container">
+
+        <!-- Journal Editor Section -->
+        <div class="editor-section">
+            <!-- Date Header -->
+            <div class="date-header">
+                <span class="calendar-icon">📅</span>
+                <span class="date-text">@ActiveDate.ToString("dddd, MMMM dd, yyyy")</span>
+            </div>
+
+            <!-- Title Input -->
+            <input type="text"
+                   class="title-input"
+                   placeholder="Morning Reflections on a Quiet Tuesday"
+                   @bind="EntryTitle" />
+
+            <!-- Journal Content -->
+            <textarea class="journal-textarea"
+                      placeholder="Start writing your thoughts..."
+                      @bind="JournalContent"></textarea>
+        </div>
+
+        <!-- Sidebar Panel -->
+        <div class="sidebar-panel">
+
+            <!-- Moods Section -->
+            <div class="panel-section">
+                <h3 class="panel-title">Moods</h3>
+                <div class="mood-buttons">
+                    <button class="mood-btn mood-positive @(_selectedMood == "Positive" ? "active" : "")"
+                            @onclick='() => _selectedMood = "Positive"'>
+                        😊 Positive
+                    </button>
+                    <button class="mood-btn mood-neutral @(_selectedMood == "Neutral" ? "active" : "")"
+                            @onclick='() => _selectedMood = "Neutral"'>
+                        😐 Neutral
+                    </button>
+                    <button class="mood-btn mood-negative @(_selectedMood == "Negative" ? "active" : "")"
+                            @onclick='() => _selectedMood = "Negative"'>
+                        😞 Negative
+                    </button>
+                </div>
+
+                <p class="section-label">Secondary Moods:</p>
+                <div class="mood-buttons">
+                    <button class="mood-btn-small mood-neutral">😐 Neutral</button>
+                    <button class="mood-btn-small mood-negative">😞 Negative</button>
+                </div>
+            </div>
+
+            <!-- Category Section -->
+            <div class="panel-section">
+                <h3 class="panel-title">Category</h3>
+                <select class="category-select">
+                    <option>Daily Reflection</option>
+                    <option>Work Notes</option>
+                    <option>Personal Goals</option>
+                    <option>Gratitude</option>
+                </select>
+            </div>
+
+            <!-- Tags Section -->
+            <div class="panel-section">
+                <h3 class="panel-title">Tags</h3>
+                <div class="tags-container">
+                    <span class="tag">Gratitude ×</span>
+                    <span class="tag">Mindfulness ×</span>
+                    <span class="tag">Productivity ×</span>
+                </div>
+                <div class="add-tag-row">
+                    <input type="text"
+                           class="tag-input"
+                           placeholder="Add new tag..." />
+                    <button class="add-tag-btn">Add</button>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                <button class="action-btn save-btn" @onclick="InitiateSaveProcess">
+                    💾 Save Entry
+                </button>
+                <button class="action-btn update-btn">
+                    ✏️ Update Entry
+                </button>
+                <button class="action-btn delete-btn" @onclick="RemoveEntry">
+                    🗑️ Delete Entry
+                </button>
+            </div>
+
+            <!-- Footer -->
+            <div class="footer-text">
+                © 2025 JournalMate. All rights reserved.
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Title Modal -->
+@if (DisplayTitlePrompt)
+{
+    <div class="modal-overlay" @onclick="DismissTitleDialog">
+        <div class="modal-card" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3 class="modal-title">Confirm Save</h3>
+                <button class="modal-close" @onclick="DismissTitleDialog">✕</button>
+            </div>
+            <div class="modal-body">
+                <p>
+                    Save entry for @ActiveDate.ToString("MMMM dd, yyyy")?
+                </p>
+                <label>
+                    TITLE
+                </label>
+                <input class="modal-input"
+                       @bind="ProposedTitle"
+                       placeholder="Enter title..."
+                       @onkeydown="ProcessTitleKeyPress" />
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn cancel-btn" @onclick="DismissTitleDialog">Cancel</button>
+                <button class="modal-btn save-modal-btn" @onclick="FinalizeEntryWithTitle">Save</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .diary-page {
+        min-height: 100vh;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #1f2937;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .diary-container {
+        display: grid;
+        grid-template-columns: 1fr 320px;
+        gap: 0;
+        min-height: 100vh;
+    }
+
+    /* Editor Section */
+    .editor-section {
+        background: rgba(255, 255, 255, 0.95);
+        padding: 32px 40px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .date-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        color: #6b7280;
+        margin-bottom: 8px;
+    }
+
+    .calendar-icon {
+        font-size: 16px;
+    }
+
+    .title-input {
+        background: transparent;
+        border: none;
+        outline: none;
+        font-size: 24px;
+        font-weight: 700;
+        color: #1f2937;
+        padding: 0;
+        margin-bottom: 12px;
+    }
+
+        .title-input::placeholder {
+            color: #9ca3af;
+        }
+
+    .journal-textarea {
+        background: transparent;
+        border: none;
+        outline: none;
+        color: #374151;
+        font-size: 15px;
+        line-height: 1.7;
+        resize: none;
+        flex: 1;
+        min-height: 400px;
+        font-family: inherit;
+    }
+
+        .journal-textarea::placeholder {
+            color: #9ca3af;
+        }
+
+    /* Sidebar Panel */
+    .sidebar-panel {
+        background: rgba(255, 255, 255, 0.9);
+        padding: 24px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        border-left: 1px solid rgba(255, 255, 255, 0.3);
+        overflow-y: auto;
+    }
+
+    .panel-section {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .panel-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #1f2937;
+        margin: 0;
+    }
+
+    .section-label {
+        font-size: 13px;
+        color: #6b7280;
+        margin: 8px 0 0 0;
+    }
+
+    /* Mood Buttons */
+    .mood-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .mood-btn {
+        background: rgba(102, 126, 234, 0.1);
+        border: 1px solid rgba(102, 126, 234, 0.2);
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-size: 14px;
+        color: #1f2937;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-align: left;
+    }
+
+        .mood-btn:hover {
+            background: rgba(102, 126, 234, 0.15);
+        }
+
+        .mood-btn.active.mood-positive {
+            background: rgba(34, 197, 94, 0.2);
+            border-color: rgba(34, 197, 94, 0.4);
+        }
+
+        .mood-btn.active.mood-neutral {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: rgba(59, 130, 246, 0.4);
+        }
+
+        .mood-btn.active.mood-negative {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: rgba(239, 68, 68, 0.4);
+        }
+
+    .mood-btn-small {
+        background: rgba(102, 126, 234, 0.1);
+        border: 1px solid rgba(102, 126, 234, 0.2);
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 13px;
+        color: #1f2937;
+        cursor: pointer;
+    }
+
+    /* Category Select */
+    .category-select {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 10px 12px;
+        color: #1f2937;
+        font-size: 14px;
+        outline: none;
+        cursor: pointer;
+    }
+
+    /* Tags */
+    .tags-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .tag {
+        background: rgba(139, 92, 246, 0.15);
+        border: 1px solid rgba(139, 92, 246, 0.3);
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 12px;
+        color: #7c3aed;
+        cursor: pointer;
+    }
+
+    .add-tag-row {
+        display: flex;
+        gap: 8px;
+    }
+
+    .tag-input {
+        flex: 1;
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        padding: 8px 10px;
+        color: #1f2937;
+        font-size: 13px;
+        outline: none;
+    }
+
+    .add-tag-btn {
+        background: #667eea;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 16px;
+        color: white;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+        .add-tag-btn:hover {
+            background: #5a67d8;
+        }
+
+    /* Action Buttons */
+    .action-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: auto;
+    }
+
+    .action-btn {
+        border: none;
+        border-radius: 8px;
+        padding: 12px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .save-btn {
+        background: #667eea;
+        color: white;
+    }
+
+        .save-btn:hover {
+            background: #5a67d8;
+        }
+
+    .update-btn {
+        background: rgba(139, 92, 246, 0.2);
+        color: #7c3aed;
+        border: 1px solid rgba(139, 92, 246, 0.3);
+    }
+
+    .delete-btn {
+        background: rgba(239, 68, 68, 0.2);
+        color: #dc2626;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+        .delete-btn:hover {
+            background: rgba(239, 68, 68, 0.3);
+        }
+
+    .footer-text {
+        text-align: center;
+        font-size: 11px;
+        color: #9ca3af;
+        margin-top: 12px;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    }
+
+    .modal-card {
+        background: white;
+        border-radius: 16px;
+        width: 90%;
+        max-width: 400px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    }
+
+    .modal-header {
+        padding: 20px 24px;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .modal-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #1f2937;
+        margin: 0;
+    }
+
+    .modal-close {
+        background: transparent;
+        border: none;
+        color: #6b7280;
+        font-size: 24px;
+        cursor: pointer;
+    }
+
+    .modal-body {
+        padding: 24px;
+    }
+
+        .modal-body p {
+            color: #6b7280;
+            margin-bottom: 16px;
+        }
+
+        .modal-body label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: #6b7280;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+    .modal-input {
+        width: 100%;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 12px;
+        color: #1f2937;
+        font-size: 14px;
+        outline: none;
+    }
+
+        .modal-input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+    .modal-footer {
+        padding: 16px 24px;
+        border-top: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+    }
+
+    .modal-btn {
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        border: none;
+        transition: all 0.2s;
+    }
+
+    .cancel-btn {
+        background: #f3f4f6;
+        color: #6b7280;
+    }
+
+        .cancel-btn:hover {
+            background: #e5e7eb;
+        }
+
+    .save-modal-btn {
+        background: #667eea;
+        color: white;
+    }
+
+        .save-modal-btn:hover {
+            background: #5a67d8;
+        }
+
+    /* Responsive */
+    @@media (max-width: 1024px) {
+        .diary-container {
+            grid-template-columns: 1fr;
+        }
+
+        .sidebar-panel {
+            border-left: none;
+            border-top: 1px solid rgba(255, 255, 255, 0.3);
+        }
+    }
+</style>
+
+@code {
+    private DateTime ActiveDate = DateTime.Today;
+    private string JournalContent = "";
+    private bool IsProcessingRequest = false;
+    private string OperationFeedback = "";
+
+    private DateTime? RecordCreationTime;
+    private DateTime? RecordModificationTime;
+
+    private string EntryTitle = "";
+    private bool DisplayTitlePrompt = false;
+    private string ProposedTitle = "";
+    private string _selectedMood = "Positive";
+
+    private string FormattedCreationTime => RecordCreationTime?.ToString("yyyy-MM-dd HH:mm") ?? "-";
+    private string FormattedUpdateTime => RecordModificationTime?.ToString("yyyy-MM-dd HH:mm") ?? "-";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadExistingEntry();
+    }
+
+    private async Task LoadExistingEntry()
+    {
+        IsProcessingRequest = true;
+        OperationFeedback = "";
+        try
+        {
+            var journalRecord = await Db.GetByDateAsync(ActiveDate);
+            if (journalRecord is null)
+            {
+                JournalContent = "";
+                EntryTitle = "";
+                RecordCreationTime = null;
+                RecordModificationTime = null;
+                OperationFeedback = "No entry for this date. Start writing!";
+            }
+            else
+            {
+                JournalContent = journalRecord.Content ?? "";
+                EntryTitle = journalRecord.Title ?? "";
+                RecordCreationTime = journalRecord.CreatedAt;
+                RecordModificationTime = journalRecord.UpdatedAt;
+                OperationFeedback = "Loaded.";
+            }
+        }
+        finally
+        {
+            IsProcessingRequest = false;
+        }
+    }
+
+    private Task InitiateSaveProcess()
+    {
+        OperationFeedback = "";
+        ProposedTitle = string.IsNullOrWhiteSpace(EntryTitle) ? "" : EntryTitle;
+        DisplayTitlePrompt = true;
+        return Task.CompletedTask;
+    }
+
+    private void DismissTitleDialog()
+    {
+        DisplayTitlePrompt = false;
+    }
+
+    private async Task FinalizeEntryWithTitle()
+    {
+        var sanitizedTitle = (ProposedTitle ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(sanitizedTitle))
+        {
+            OperationFeedback = "Please enter a title.";
+            return;
+        }
+
+        DisplayTitlePrompt = false;
+        await PersistEntryWithTitle(sanitizedTitle);
+    }
+
+    private async Task PersistEntryWithTitle(string titleText)
+    {
+        IsProcessingRequest = true;
+        OperationFeedback = "";
+        try
+        {
+            await Db.SaveAsync(ActiveDate, titleText, JournalContent);
+
+            var journalRecord = await Db.GetByDateAsync(ActiveDate);
+
+            EntryTitle = journalRecord?.Title ?? titleText;
+            RecordCreationTime = journalRecord?.CreatedAt;
+            RecordModificationTime = journalRecord?.UpdatedAt;
+
+            OperationFeedback = "Saved.";
+        }
+        catch (Exception ex)
+        {
+            OperationFeedback = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            IsProcessingRequest = false;
+        }
+    }
+
+    private async Task RemoveEntry()
+    {
+        IsProcessingRequest = true;
+        OperationFeedback = "";
+        try
+        {
+            await Db.DeleteAsync(ActiveDate);
+
+            JournalContent = "";
+            EntryTitle = "";
+            RecordCreationTime = null;
+            RecordModificationTime = null;
+
+            OperationFeedback = "Deleted.";
+        }
+        finally
+        {
+            IsProcessingRequest = false;
+        }
+    }
+
+    private async Task ProcessTitleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await FinalizeEntryWithTitle();
+        }
+        else if (e.Key == "Escape")
+        {
+            DismissTitleDialog();
+        }
+    }
+}
