@@ -4,31 +4,31 @@
 @implements IDisposable
 
 <div class="landing-page @(AppState.IsDarkMode ? "dark-theme" : "light-theme")">
-    
+
     <!-- Hero Section -->
     <div class="hero-section">
         <div class="hero-content">
             <!-- Logo/Brand -->
             <div class="brand-logo">📖 JournalMate</div>
-            
+
             <!-- Main Heading -->
             <h1 class="hero-title">JournalMate</h1>
             <p class="hero-subtitle">
-                Your daily companion for mindfulness,<br/>
+                Your daily companion for mindfulness,<br />
                 organization, and personal growth.
             </p>
-            
+
             <!-- Login Button -->
             <button class="login-button" @onclick="NavigateToLogin">
                 Login
             </button>
         </div>
     </div>
-    
+
     <!-- Features Section -->
     <div class="features-section">
         <h2 class="section-title">Why JournalMate?</h2>
-        
+
         <div class="features-grid">
             <!-- Feature 1 -->
             <div class="feature-card">
@@ -38,7 +38,7 @@
                     Record your thoughts and experiences with a clean, distraction-free interface for clarity and ease.
                 </p>
             </div>
-            
+
             <!-- Feature 2 -->
             <div class="feature-card">
                 <div class="feature-icon">📊</div>
@@ -47,7 +47,7 @@
                     Visualize your progress, mood patterns, and writing habits with integrated calendar and analytics.
                 </p>
             </div>
-            
+
             <!-- Feature 3 -->
             <div class="feature-card">
                 <div class="feature-icon">🔒</div>
@@ -56,7 +56,7 @@
                     Your personal reflections are kept safe with end-to-end encryption and secure PIN access, ensuring peace of mind.
                 </p>
             </div>
-            
+
             <!-- Feature 4 -->
             <div class="feature-card">
                 <div class="feature-icon">💡</div>
@@ -67,26 +67,26 @@
             </div>
         </div>
     </div>
-    
+
 </div>
 
 <style>
-    /* Light Theme */
+    /* Light Theme - Matching Dashboard */
     .landing-page.light-theme {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: #ffffff;
     }
 
     .light-theme .brand-logo,
-    .light-theme .hero-title,
-    .light-theme .hero-subtitle,
-    .light-theme .section-title {
+    .light-theme .hero-title {
         color: #ffffff;
     }
 
-    .light-theme .hero-subtitle,
+    .light-theme .hero-subtitle {
+        color: rgba(255, 255, 255, 0.9);
+    }
+
     .light-theme .section-title {
-        opacity: 1;
+        color: #ffffff;
     }
 
     .light-theme .login-button {
@@ -94,17 +94,18 @@
         color: #667eea;
     }
 
-    .light-theme .login-button:hover {
-        background: #ffffff;
-    }
+        .light-theme .login-button:hover {
+            background: #ffffff;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+        }
 
     .light-theme .feature-card {
         background: rgba(255, 255, 255, 0.95);
     }
 
-    .light-theme .feature-card:hover {
-        background: #ffffff;
-    }
+        .light-theme .feature-card:hover {
+            background: #ffffff;
+        }
 
     .light-theme .feature-title {
         color: #1f2937;
@@ -114,10 +115,9 @@
         color: #6b7280;
     }
 
-    /* Dark Theme */
+    /* Dark Theme - Matching Dashboard */
     .landing-page.dark-theme {
         background: #0f1419;
-        color: #e2e8f0;
     }
 
     .dark-theme .brand-logo,
@@ -125,9 +125,12 @@
         color: #e2e8f0;
     }
 
-    .dark-theme .hero-subtitle,
+    .dark-theme .hero-subtitle {
+        color: rgba(226, 232, 240, 0.7);
+    }
+
     .dark-theme .section-title {
-        color: rgba(226, 232, 240, 0.8);
+        color: #e2e8f0;
     }
 
     .dark-theme .login-button {
@@ -135,18 +138,20 @@
         color: #ffffff;
     }
 
-    .dark-theme .login-button:hover {
-        background: #5a67d8;
-    }
+        .dark-theme .login-button:hover {
+            background: #5a67d8;
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
 
     .dark-theme .feature-card {
         background: #1a202c;
         border: 1px solid rgba(255, 255, 255, 0.1);
     }
 
-    .dark-theme .feature-card:hover {
-        background: #2d3748;
-    }
+        .dark-theme .feature-card:hover {
+            background: #2d3748;
+            border-color: rgba(255, 255, 255, 0.15);
+        }
 
     .dark-theme .feature-title {
         color: #e2e8f0;
@@ -215,14 +220,13 @@
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     }
 
-    .login-button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
-    }
+        .login-button:hover {
+            transform: translateY(-2px);
+        }
 
-    .login-button:active {
-        transform: translateY(0);
-    }
+        .login-button:active {
+            transform: translateY(0);
+        }
 
     /* Features Section */
     .features-section {
@@ -253,10 +257,10 @@
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     }
 
-    .feature-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
-    }
+        .feature-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+        }
 
     .feature-icon {
         font-size: 48px;

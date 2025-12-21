@@ -555,6 +555,7 @@
         width: 90%;
         max-width: 450px;
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        background:white;
     }
 
     .modal-header {
@@ -709,6 +710,7 @@
     {
         TargetDeleteDateKey = dateKey;
         DisplayDeleteConfirmation = true;
+        ExecuteRecordDeletion();
     }
 
     private void AbortDeleteOperation()
@@ -741,4 +743,5 @@
             TargetDeleteDateKey = "";
         }
     }
+
 }

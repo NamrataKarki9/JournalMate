@@ -69,15 +69,29 @@ public class JournalDatabase
     {
         var formattedKey = FormatDateKey(date);
         
+        Console.WriteLine($"[Database.DeleteAsync] Looking for DateKey: '{formattedKey}'");
+        
         // First, find the entry
         var entryToDelete = await _connection.Table<JournalEntry>()
-                                    .Where(x => x.DateKey == formattedKey)
-                                    .FirstOrDefaultAsync();
+                                .Where(x => x.DateKey == formattedKey)
+                                .FirstOrDefaultAsync();
         
-        // If found, delete it by Id
         if (entryToDelete != null)
         {
-            return await _connection.DeleteAsync(entryToDelete);
+            Console.WriteLine($"[Database.DeleteAsync] Found entry - Id: {entryToDelete.Id}, Title: '{entryToDelete.Title}'");
+            var result = await _connection.DeleteAsync(entryToDelete);
+            Console.WriteLine($"[Database.DeleteAsync] Delete result: {result}");
+            return result;
+        }
+        
+        Console.WriteLine($"[Database.DeleteAsync] No entry found with DateKey: '{formattedKey}'");
+        
+        // Debug: List all DateKeys in database
+        var allEntries = await _connection.Table<JournalEntry>().ToListAsync();
+        Console.WriteLine($"[Database.DeleteAsync] All DateKeys in database:");
+        foreach (var entry in allEntries)
+        {
+            Console.WriteLine($"  - '{entry.DateKey}' (Id: {entry.Id})");
         }
         
         return 0;

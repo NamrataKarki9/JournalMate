@@ -1,6 +1,7 @@
 ﻿@page "/login"
 @inject JournalMate.Services.AppCurrentState CurrentAppState
 @inject NavigationManager NavManager
+@implements IDisposable
 
 <div class="login-page @(CurrentAppState.IsDarkMode ? "dark-theme" : "light-theme")">
 
@@ -68,13 +69,14 @@
 </div>
 
 <style>
-    /* Light Theme */
+    /* Light Theme - Matching Dashboard */
     .login-page.light-theme {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     }
 
     .light-theme .login-card {
         background: rgba(255, 255, 255, 0.95);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     }
 
     .light-theme .brand-logo {
@@ -99,15 +101,16 @@
         color: #1f2937;
     }
 
-    .light-theme .form-input::placeholder {
-        color: #9ca3af;
-    }
+        .light-theme .form-input::placeholder {
+            color: #9ca3af;
+        }
 
-    .light-theme .form-input:focus {
-        background: #ffffff;
-    }
+        .light-theme .form-input:focus {
+            background: #ffffff;
+            border-color: #667eea;
+        }
 
-    /* Dark Theme */
+    /* Dark Theme - Matching Dashboard */
     .login-page.dark-theme {
         background: #0f1419;
     }
@@ -115,6 +118,7 @@
     .dark-theme .login-card {
         background: #1a202c;
         border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
     }
 
     .dark-theme .brand-logo {
@@ -139,14 +143,15 @@
         color: #e2e8f0;
     }
 
-    .dark-theme .form-input::placeholder {
-        color: rgba(226, 232, 240, 0.4);
-    }
+        .dark-theme .form-input::placeholder {
+            color: rgba(226, 232, 240, 0.4);
+        }
 
-    .dark-theme .form-input:focus {
-        background: #0f1419;
-        border-color: #667eea;
-    }
+        .dark-theme .form-input:focus {
+            background: #0f1419;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+        }
 
     /* Base Styles */
     .login-page {
@@ -162,7 +167,6 @@
         padding: 48px 40px;
         width: 100%;
         max-width: 440px;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     }
 
     .login-header {
@@ -214,10 +218,9 @@
         transition: all 0.3s ease;
     }
 
-    .form-input:focus {
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
-    }
+        .form-input:focus {
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+        }
 
     .field-error {
         font-size: 12px;
@@ -249,19 +252,19 @@
         box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
     }
 
-    .login-button:hover:not(:disabled) {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
-    }
+        .login-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
 
-    .login-button:active:not(:disabled) {
-        transform: translateY(0);
-    }
+        .login-button:active:not(:disabled) {
+            transform: translateY(0);
+        }
 
-    .login-button:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-    }
+        .login-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
 
     /* Responsive */
     @@media (max-width: 480px) {
@@ -286,6 +289,16 @@
     private bool _showCredentialError = false;
     private bool _showUsernameError = false;
     private bool _showPasswordError = false;
+
+    protected override void OnInitialized()
+    {
+        CurrentAppState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        CurrentAppState.OnChange -= StateHasChanged;
+    }
 
     private async Task ProcessLoginAttempt()
     {
