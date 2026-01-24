@@ -589,7 +589,6 @@
     private void LastPage() => GoToPage(_totalPages);
     private void PreviousPage() { if (_currentPage > 1) GoToPage(_currentPage - 1); }
     private void NextPage() { if (_currentPage < _totalPages) GoToPage(_currentPage + 1); }
-
     private void NavigateToEntry(string dateKey)
     {
         NavigationManager.NavigateTo($"/diary/{dateKey}");
