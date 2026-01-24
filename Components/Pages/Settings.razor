@@ -1,0 +1,783 @@
+@page "/settings"
+@using JournalMaui.Services
+@inject JournalDatabase Db
+@inject JournalMate.Services.AppCurrentState AppState
+@inject AuthService AuthService
+@inject NavigationManager NavManager
+@implements IDisposable
+
+<div class="settings-page">
+    <header class="page-header">
+        <h1 class="page-title">⚙️ Settings</h1>
+        <p class="page-subtitle">Customize your journal experience</p>
+    </header>
+
+    <div class="settings-content">
+        <!-- Profile Section -->
+        <div class="settings-section glass-card section-profile">
+            <h2 class="section-title">👤 Profile</h2>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="profile-preview">
+                        <div class="settings-avatar"
+                            style="background-image: url('@AppState.ProfilePictureDisplayPath'); background-size: cover; background-position: center;">
+                        </div>
+                        <div class="profile-details">
+                            <h3>@AppState.UserDisplayName</h3>
+                            <p>Customize your profile picture</p>
+                        </div>
+                    </div>
+                </div>
+                <button class="setting-btn" @onclick="PickProfileImage">
+                    Change Picture
+                </button>
+            </div>
+        </div>
+
+        <!-- Appearance Section -->
+        <div class="settings-section glass-card section-appearance">
+            <h2 class="section-title">🎨 Appearance</h2>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <h3>@(AppState.IsDarkMode ? "Dark Mode" : "Light Mode")</h3>
+                    <p>@(AppState.IsDarkMode 
+                        ? "Switch to light mode for better visibility in bright environments" 
+                        : "Switch to dark mode for comfortable viewing in low-light conditions")</p>
+                </div>
+                <div class="setting-control">
+                    <MudSwitch Value="@AppState.IsDarkMode" ValueChanged="@((bool v) => AppState.SetTheme(v))"
+                        Color="Color.Primary" T="bool" />
+                    <span class="theme-status">@(AppState.IsDarkMode ? "🌙 Dark" : "☀️ Light")</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Security Section -->
+        <div class="settings-section glass-card section-security">
+            <h2 class="section-title">🔒 Security & Account</h2>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <h3>Change Name</h3>
+                    <p>Update your display name</p>
+                </div>
+                <button class="setting-btn" @onclick="ShowChangeNameModal">
+                    Change Name
+                </button>
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <h3>Change PIN</h3>
+                    <p>Update your security PIN</p>
+                </div>
+                <button class="setting-btn" @onclick="ShowChangePinModal">
+                    Change PIN
+                </button>
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <h3>Export Data</h3>
+                    <p>Export your journal entries</p>
+                </div>
+                <button class="setting-btn" @onclick='() => NavManager.NavigateTo("/export")'>
+                    Export Journal
+                </button>
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <h3>Log Out</h3>
+                    <p>Sign out of your journal</p>
+                </div>
+                <button class="setting-btn danger" @onclick="LogOut">
+                    Log Out
+                </button>
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <h3>Reset All Data</h3>
+                    <p class="text-error">Permanently wipe all journal entries and settings</p>
+                </div>
+                <button class="setting-btn danger-filled" @onclick="ShowResetModal">
+                    Reset App
+                </button>
+            </div>
+        </div>
+
+        <!-- About Section -->
+        <div class="settings-section glass-card section-about section-centered">
+            <div class="app-logo">📖</div>
+            <h3 class="app-name">JournalMate</h3>
+            <p class="app-version">Version 1.0.0</p>
+            <p class="app-description">
+                A secure, feature-rich personal journaling application
+                built with .NET MAUI Blazor Hybrid.
+            </p>
+            <div class="feature-tags">
+                <span class="feature-tag">📝 Daily Journaling</span>
+                <span class="feature-tag">😊 Mood Tracking</span>
+                <span class="feature-tag">🏷️ Tags</span>
+                <span class="feature-tag">📊 Analytics</span>
+                <span class="feature-tag">🔒 PIN Security</span>
+            </div>
+            <p class="copyright">© @DateTime.Now.Year JournalMate. All rights reserved.</p>
+            <p class="developer-credit">Developed with <span class="heart">❤️</span> by Namrata Karki</p>
+        </div>
+    </div>
+</div>
+
+<!-- Change PIN Modal -->
+@if (_showChangePinModal)
+{
+    <div class="modal-overlay" @onclick="() => _showChangePinModal = false">
+        <div class="modal-card glass-card" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>Change PIN</h3>
+                <button class="modal-close" @onclick="() => _showChangePinModal = false">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Current PIN</label>
+                    <input type="password" class="pin-input" maxlength="4" @bind="_currentPin" />
+                </div>
+                <div class="form-group">
+                    <label>New PIN</label>
+                    <input type="password" class="pin-input" maxlength="4" @bind="_newPin" />
+                </div>
+                <div class="form-group">
+                    <label>Confirm New PIN</label>
+                    <input type="password" class="pin-input" maxlength="4" @bind="_confirmNewPin" />
+                </div>
+                @if (!string.IsNullOrEmpty(_pinMessage))
+                {
+                    <div class="message-box @(_pinError ? "error" : "success")">
+                        @_pinMessage
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" @onclick="() => _showChangePinModal = false">Cancel</button>
+                <button class="btn-save" @onclick="ChangePin">Save</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Change Name Modal -->
+@if (_showChangeNameModal)
+{
+    <div class="modal-overlay" @onclick="() => _showChangeNameModal = false">
+        <div class="modal-card glass-card" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>Change Name</h3>
+                <button class="modal-close" @onclick="() => _showChangeNameModal = false">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>New Name</label>
+                    <input type="text" class="text-input" @bind="_newName" placeholder="Enter new name" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" @onclick="() => _showChangeNameModal = false">Cancel</button>
+                <button class="btn-save" @onclick="ChangeName">Save</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Factory Reset Confirmation Modal -->
+@if (_showResetModal)
+{
+    <div class="modal-overlay" @onclick="() => _showResetModal = false">
+        <div class="modal-card glass-card danger-border" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3 class="text-error">⚠️ Factory Reset</h3>
+                <button class="modal-close" @onclick="() => _showResetModal = false">✕</button>
+            </div>
+            <div class="modal-body">
+                <p class="warning-text">
+                    This action is <strong>irreversible</strong>. You will lose:
+                </p>
+                <ul class="warning-list">
+                    <li>All journal entries and memories</li>
+                    <li>Mood analytics and statistics</li>
+                    <li>Security PIN and Profile Picture</li>
+                    <li>Custom app settings</li>
+                </ul>
+                <p class="confirmation-text">Are you absolutely sure you want to start from scratch?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" @onclick="() => _showResetModal = false">Cancel</button>
+                <button class="btn-danger" @onclick="PerformReset">Delete Everything</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .settings-page {
+        min-height: 100vh;
+        padding: 32px 40px;
+        background: var(--jm-bg-primary);
+    }
+
+    .page-header {
+        margin-bottom: 32px;
+    }
+
+    .page-title {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--jm-text-primary);
+        margin: 0 0 8px 0;
+    }
+
+    .page-subtitle {
+        font-size: 14px;
+        color: var(--jm-text-secondary);
+        margin: 0;
+    }
+
+    .settings-content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-areas:
+            "profile appearance"
+            "security about";
+        gap: 24px;
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+
+    .section-profile {
+        grid-area: profile;
+    }
+
+    .section-appearance {
+        grid-area: appearance;
+    }
+
+    .section-security {
+        grid-area: security;
+    }
+
+    .section-about {
+        grid-area: about;
+    }
+
+    .settings-section {
+        padding: 24px;
+    }
+
+    .section-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--jm-text-primary);
+        margin: 0 0 20px 0;
+    }
+
+    .setting-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 0;
+        border-bottom: 1px solid var(--jm-border-light);
+    }
+
+    .setting-item:last-child {
+        border-bottom: none;
+    }
+
+    .setting-info h3 {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--jm-text-primary);
+        margin: 0 0 4px 0;
+    }
+
+    .setting-info p {
+        font-size: 13px;
+        color: var(--jm-text-muted);
+        margin: 0;
+    }
+
+    .setting-btn {
+        padding: 10px 20px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-md);
+        color: var(--jm-text-secondary);
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+    }
+
+    .setting-btn:hover {
+        background: var(--jm-surface-hover);
+        color: var(--jm-text-primary);
+    }
+
+    .setting-btn.danger {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: rgba(239, 68, 68, 0.3);
+        color: var(--jm-error);
+    }
+
+    .setting-btn.danger:hover {
+        background: rgba(239, 68, 68, 0.2);
+    }
+
+    .setting-control {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .theme-status {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--jm-accent-light);
+        min-width: 90px;
+        text-align: right;
+    }
+
+    .danger-filled {
+        background: var(--jm-error) !important;
+        border: none !important;
+        color: white !important;
+    }
+
+    .danger-filled:hover {
+        background: #dc2626 !important;
+        box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+    }
+
+    /* About Section */
+    .section-centered {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 40px 24px;
+    }
+
+    .app-logo {
+        font-size: 56px;
+        margin-bottom: 12px;
+    }
+
+    .app-name {
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--jm-text-primary);
+        margin: 0 0 4px 0;
+    }
+
+    .app-version {
+        font-size: 14px;
+        color: var(--jm-text-muted);
+        margin: 0 0 16px 0;
+    }
+
+    .app-description {
+        font-size: 14px;
+        color: var(--jm-text-secondary);
+        line-height: 1.6;
+        margin: 0 0 20px 0;
+    }
+
+    .feature-tags {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+        margin-bottom: 20px;
+    }
+
+    .feature-tag {
+        padding: 6px 12px;
+        background: rgba(147, 51, 234, 0.1);
+        border-radius: var(--jm-radius-full);
+        font-size: 12px;
+        color: var(--jm-accent-light);
+    }
+
+    .copyright {
+        font-size: 12px;
+        color: var(--jm-text-muted);
+        margin: 0;
+    }
+
+    .developer-credit {
+        font-size: 13px;
+        color: var(--jm-text-secondary);
+        margin-top: 8px;
+        font-weight: 500;
+    }
+
+    .heart {
+        color: #ef4444;
+        display: inline-block;
+        animation: heartbeat 1.5s ease-in-out infinite;
+    }
+
+    @@keyframes heartbeat {
+        0%, 100% {
+            transform: scale(1);
+        }
+        50% {
+            transform: scale(1.1);
+        }
+    }
+
+    .profile-preview {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .settings-avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--jm-accent) 0%, var(--jm-accent-dark) 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        color: white;
+    }
+
+    .profile-details h3 {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--jm-text-primary);
+        margin: 0;
+    }
+
+    .profile-details p {
+        font-size: 13px;
+        color: var(--jm-text-muted);
+        margin: 2px 0 0 0;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-card {
+        width: 90%;
+        max-width: 400px;
+        padding: 0;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px 24px;
+        border-bottom: 1px solid var(--jm-border);
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        font-size: 18px;
+        color: var(--jm-text-primary);
+    }
+
+    .modal-close {
+        background: transparent;
+        border: none;
+        color: var(--jm-text-muted);
+        font-size: 20px;
+        cursor: pointer;
+    }
+
+    .modal-body {
+        padding: 24px;
+    }
+
+    .form-group {
+        margin-bottom: 16px;
+    }
+
+    .form-group label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        color: var(--jm-text-muted);
+        margin-bottom: 8px;
+    }
+
+    .pin-input, .text-input {
+        width: 100%;
+        padding: 12px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-md);
+        color: var(--jm-text-primary);
+        font-size: 16px;
+        outline: none;
+    }
+
+    .pin-input {
+        text-align: center;
+        letter-spacing: 8px;
+        font-size: 18px;
+    }
+
+    .pin-input:focus, .text-input:focus {
+        border-color: var(--jm-accent);
+    }
+
+    .message-box {
+        padding: 12px;
+        border-radius: var(--jm-radius-md);
+        font-size: 13px;
+        text-align: center;
+    }
+
+    .message-box.error {
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--jm-error);
+    }
+
+    .message-box.success {
+        background: rgba(34, 197, 94, 0.1);
+        color: var(--jm-success);
+    }
+
+    .modal-footer {
+        padding: 16px 24px;
+        border-top: 1px solid var(--jm-border);
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+    }
+
+    .btn-cancel {
+        padding: 10px 20px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-md);
+        color: var(--jm-text-secondary);
+        cursor: pointer;
+    }
+
+    .btn-save {
+        padding: 10px 20px;
+        background: var(--jm-accent);
+        border: none;
+        border-radius: var(--jm-radius-md);
+        color: white;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .danger-border {
+        border: 2px solid var(--jm-error) !important;
+    }
+
+    .text-error {
+        color: var(--jm-error) !important;
+    }
+
+    .warning-text {
+        font-size: 14px;
+        color: var(--jm-text-primary);
+        margin-bottom: 12px;
+    }
+
+    .warning-list {
+        text-align: left;
+        font-size: 13px;
+        color: var(--jm-text-secondary);
+        margin-bottom: 20px;
+        padding-left: 20px;
+    }
+
+    .warning-list li {
+        margin-bottom: 4px;
+    }
+
+    .confirmation-text {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--jm-text-primary);
+    }
+
+    .btn-danger {
+        padding: 10px 20px;
+        background: var(--jm-error);
+        border: none;
+        border-radius: var(--jm-radius-md);
+        color: white;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .btn-danger:hover {
+        background: #dc2626;
+    }
+
+    @@media (max-width: 600px) {
+        .settings-page {
+            padding: 20px;
+        }
+
+        .settings-content {
+            display: flex;
+            flex-direction: column;
+        }
+    }
+</style>
+
+@code {
+    private bool _showChangePinModal = false;
+    private bool _showChangeNameModal = false;
+    private bool _showResetModal = false;
+    private string _newName = "";
+    private string _currentPin = "";
+    private string _newPin = "";
+    private string _confirmNewPin = "";
+    private string _pinMessage = "";
+    private bool _pinError = false;
+
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+    }
+
+    private async Task PickProfileImage()
+    {
+        try
+        {
+            var result = await Microsoft.Maui.Storage.FilePicker.Default.PickAsync(new PickOptions
+            {
+                PickerTitle = "Select Profile Picture",
+                FileTypes = FilePickerFileType.Images
+            });
+
+            if (result != null)
+            {
+                var newFile = Path.Combine(FileSystem.AppDataDirectory,
+                $"profile_pic_{DateTime.Now.Ticks}{Path.GetExtension(result.FileName)}");
+                using var stream = await result.OpenReadAsync();
+                using var newStream = File.Create(newFile);
+                await stream.CopyToAsync(newStream);
+
+                AppState.UpdateProfilePicture(newFile);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error picking image: {ex.Message}");
+        }
+    }
+
+    private void ShowChangePinModal()
+    {
+        _currentPin = "";
+        _newPin = "";
+        _confirmNewPin = "";
+        _pinMessage = "";
+        _showChangePinModal = true;
+    }
+
+    private async Task ChangePin()
+    {
+        _pinMessage = "";
+        _pinError = false;
+
+        if (string.IsNullOrWhiteSpace(_currentPin))
+        {
+            _pinMessage = "Please enter your current PIN.";
+            _pinError = true;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_newPin) || _newPin.Length < 4)
+        {
+            _pinMessage = "New PIN must be at least 4 digits.";
+            _pinError = true;
+            return;
+        }
+
+        if (_newPin != _confirmNewPin)
+        {
+            _pinMessage = "New PINs do not match.";
+            _pinError = true;
+            return;
+        }
+
+        var result = await AuthService.ChangePinAsync(_currentPin, _newPin);
+
+        if (result.success)
+        {
+            _pinMessage = "PIN changed successfully!";
+            _pinError = false;
+            await Task.Delay(1500);
+            _showChangePinModal = false;
+        }
+        else
+        {
+            _pinMessage = result.message;
+            _pinError = true;
+        }
+    }
+
+    private void LogOut()
+    {
+        AppState.RevokeAuthentication();
+        NavManager.NavigateTo("/", replace: true);
+    }
+
+    private void ShowChangeNameModal()
+    {
+        _newName = AppState.UserDisplayName;
+        _showChangeNameModal = true;
+    }
+
+    private void ChangeName()
+    {
+        if (!string.IsNullOrWhiteSpace(_newName))
+        {
+            AppState.UpdateUserDisplayName(_newName);
+            _showChangeNameModal = false;
+        }
+    }
+
+    private void ShowResetModal()
+    {
+        _showResetModal = true;
+    }
+
+    private async Task PerformReset()
+    {
+        try
+        {
+            await Db.WipeDatabaseAsync();
+            AppState.ResetAllData();
+            _showResetModal = false;
+            NavManager.NavigateTo("/", replace: true);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Settings] Error during PerformReset: {ex.Message}");
+            NavManager.NavigateTo("/", replace: true);
+        }
+    }
+}     

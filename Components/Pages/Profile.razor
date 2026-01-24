@@ -1,0 +1,686 @@
+@page "/profile"
+@using JournalMaui.Services
+@using JournalMaui.Models
+@inject JournalDatabase Db
+@inject JournalMate.Services.AppCurrentState AppState
+@inject NavigationManager NavManager
+@implements IDisposable
+
+<div class="profile-page @(AppState.IsDarkMode ? "dark-theme" : "light-theme")">
+    <div class="page-header">
+        <h1>👤 Profile</h1>
+        <p>Your journaling journey at a glance</p>
+    </div>
+
+    <div class="profile-content">
+        <!-- User Card -->
+        <div class="user-card">
+            <div class="avatar"
+                style="background-image: url('@AppState.ProfilePictureDisplayPath'); background-size: cover; background-position: center;"
+                @onclick="PickProfileImage">
+                <div class="avatar-overlay">
+                    <span>📷</span>
+                </div>
+            </div>
+            <div class="user-info">
+                @if (_isEditingName)
+                {
+                    <div class="edit-name-container">
+                        <input type="text" class="edit-name-input" @bind="_tempName" @bind:event="oninput"
+                            placeholder="Your Name" />
+                        <div class="edit-actions">
+                            <button class="icon-btn save" @onclick="SaveName">✅</button>
+                            <button class="icon-btn cancel" @onclick="CancelEditName">❌</button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="name-display">
+                        <h2>@AppState.UserDisplayName</h2>
+                        <button class="edit-btn" @onclick="StartEditName" title="Edit Name">✏️</button>
+                    </div>
+                }
+                <p class="member-since">Member since @_memberSince</p>
+            </div>
+        </div>
+
+        <!-- Journey Stats -->
+        <div class="stats-section">
+            <h2 class="section-title">📊 Your Journey</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-icon">📝</span>
+                    <div class="stat-content">
+                        <span class="stat-number">@_totalEntries</span>
+                        <span class="stat-label">Total Entries</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-icon">✍️</span>
+                    <div class="stat-content">
+                        <span class="stat-number">@_totalWords</span>
+                        <span class="stat-label">Words Written</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-icon">🔥</span>
+                    <div class="stat-content">
+                        <span class="stat-number">@_currentStreak</span>
+                        <span class="stat-label">Current Streak</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-icon">🏆</span>
+                    <div class="stat-content">
+                        <span class="stat-number">@_longestStreak</span>
+                        <span class="stat-label">Best Streak</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mood Summary -->
+        <div class="mood-section">
+            <h2 class="section-title">😊 Mood Overview</h2>
+            <div class="mood-summary">
+                <div class="mood-item positive">
+                    <span class="mood-emoji">😊</span>
+                    <span class="mood-count">@_positiveCount</span>
+                    <span class="mood-label">Positive Days</span>
+                </div>
+                <div class="mood-item neutral">
+                    <span class="mood-emoji">😐</span>
+                    <span class="mood-count">@_neutralCount</span>
+                    <span class="mood-label">Neutral Days</span>
+                </div>
+                <div class="mood-item negative">
+                    <span class="mood-emoji">😔</span>
+                    <span class="mood-count">@_negativeCount</span>
+                    <span class="mood-label">Challenging Days</span>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_mostFrequentMood))
+            {
+                <div class="frequent-mood">
+                    Your most expressed mood:
+                    <span class="mood-badge">@MoodData.GetMoodEmoji(_mostFrequentMood) @_mostFrequentMood</span>
+                </div>
+            }
+        </div>
+
+        <!-- Top Tags -->
+        <div class="tags-section">
+            <h2 class="section-title">🏷️ Your Top Topics</h2>
+            @if (_topTags.Any())
+            {
+                <div class="tags-list">
+                    @foreach (var tag in _topTags.Take(8))
+                    {
+                        <div class="tag-badge"
+                            style="background-color: @(TagData.GetTagColor(tag.Key) + "20"); border-color: @TagData.GetTagColor(tag.Key); color: @TagData.GetTagColor(tag.Key)">
+                            @tag.Key
+                            <span class="tag-count">@tag.Value</span>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="empty-message">Add tags to your entries to see your top topics!</p>
+            }
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="actions-section">
+            <button class="action-btn primary" @onclick='() => NavManager.NavigateTo("/diary")'>
+                ✍️ Write Today
+            </button>
+            <button class="action-btn secondary" @onclick='() => NavManager.NavigateTo("/export")'>
+                📥 Export Journal
+            </button>
+            <button class="action-btn secondary" @onclick='() => NavManager.NavigateTo("/settings")'>
+                ⚙️ Settings
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Light Theme */
+    .profile-page.light-theme {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .light-theme .page-header h1,
+    .light-theme .page-header p {
+        color: #ffffff;
+    }
+
+    .light-theme .user-card,
+    .light-theme .stats-section,
+    .light-theme .mood-section,
+    .light-theme .tags-section,
+    .light-theme .actions-section {
+        background: rgba(255, 255, 255, 0.98);
+    }
+
+    .light-theme .user-info h2 {
+        color: #1f2937;
+    }
+
+    .light-theme .member-since {
+        color: #6b7280;
+    }
+
+    .light-theme .section-title {
+        color: #1f2937;
+    }
+
+    .light-theme .stat-card {
+        background: #f9fafb;
+    }
+
+    .light-theme .stat-number {
+        color: #1f2937;
+    }
+
+    .light-theme .stat-label {
+        color: #6b7280;
+    }
+
+    .light-theme .mood-count {
+        color: #1f2937;
+    }
+
+    .light-theme .mood-label {
+        color: #6b7280;
+    }
+
+    .light-theme .frequent-mood {
+        background: #f9fafb;
+        color: #6b7280;
+    }
+
+    .light-theme .empty-message {
+        color: #6b7280;
+    }
+
+    /* Dark Theme */
+    .profile-page.dark-theme {
+        background: #0f1419;
+    }
+
+    .dark-theme .page-header h1 {
+        color: #e2e8f0;
+    }
+
+    .dark-theme .page-header p {
+        color: rgba(226, 232, 240, 0.7);
+    }
+
+    .dark-theme .user-card,
+    .dark-theme .stats-section,
+    .dark-theme .mood-section,
+    .dark-theme .tags-section,
+    .dark-theme .actions-section {
+        background: #1a202c;
+    }
+
+    .dark-theme .user-info h2 {
+        color: #e2e8f0;
+    }
+
+    .dark-theme .member-since {
+        color: rgba(226, 232, 240, 0.6);
+    }
+
+    .dark-theme .section-title {
+        color: #e2e8f0;
+    }
+
+    .dark-theme .stat-card {
+        background: #2d3748;
+    }
+
+    .dark-theme .stat-number {
+        color: #e2e8f0;
+    }
+
+    .dark-theme .stat-label {
+        color: rgba(226, 232, 240, 0.6);
+    }
+
+    .dark-theme .mood-count {
+        color: #e2e8f0;
+    }
+
+    .dark-theme .mood-label {
+        color: rgba(226, 232, 240, 0.6);
+    }
+
+    .dark-theme .frequent-mood {
+        background: #2d3748;
+        color: rgba(226, 232, 240, 0.7);
+    }
+
+    .dark-theme .empty-message {
+        color: rgba(226, 232, 240, 0.6);
+    }
+
+    /* Base Styles */
+    .profile-page {
+        min-height: 100vh;
+        padding: 40px;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .page-header {
+        margin-bottom: 32px;
+    }
+
+    .page-header h1 {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+
+    .profile-content {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        max-width: 800px;
+    }
+
+    .user-card,
+    .stats-section,
+    .mood-section,
+    .tags-section,
+    .actions-section {
+        padding: 28px;
+        border-radius: 16px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    /* User Card */
+    .user-card {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+    }
+
+    .avatar {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+    }
+
+    .user-info h2 {
+        font-size: 1.5rem;
+        margin: 0;
+    }
+
+    .name-display {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 4px;
+    }
+
+    .edit-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1.2rem;
+        padding: 4px;
+        border-radius: 50%;
+        transition: background 0.2s;
+        opacity: 0.6;
+    }
+
+    .edit-btn:hover {
+        background: rgba(0, 0, 0, 0.05);
+        opacity: 1;
+    }
+
+    .dark-theme .edit-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .edit-name-container {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 4px;
+    }
+
+    .edit-name-input {
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+        font-size: 1.2rem;
+        width: 200px;
+    }
+
+    .dark-theme .edit-name-input {
+        background: #2d3748;
+        border-color: #4a5568;
+        color: white;
+    }
+
+    .icon-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1.2rem;
+        padding: 4px;
+        border-radius: 4px;
+    }
+
+    .icon-btn.save:hover {
+        background: rgba(34, 197, 94, 0.2);
+    }
+
+    .icon-btn.cancel:hover {
+        background: rgba(239, 68, 68, 0.2);
+    }
+
+    .member-since {
+        font-size: 14px;
+        margin: 0;
+    }
+
+    /* Section Title */
+    .section-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        margin: 0 0 20px 0;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+    }
+
+    .stat-card {
+        padding: 16px;
+        border-radius: 12px;
+        text-align: center;
+    }
+
+    .stat-icon {
+        font-size: 28px;
+        display: block;
+        margin-bottom: 8px;
+    }
+
+    .stat-number {
+        display: block;
+        font-size: 1.8rem;
+        font-weight: 700;
+    }
+
+    .stat-label {
+        font-size: 11px;
+        text-transform: uppercase;
+    }
+
+    /* Mood Summary */
+    .mood-summary {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    .mood-item {
+        text-align: center;
+        padding: 20px;
+        border-radius: 12px;
+    }
+
+    .mood-item.positive {
+        background: rgba(34, 197, 94, 0.1);
+    }
+
+    .mood-item.neutral {
+        background: rgba(59, 130, 246, 0.1);
+    }
+
+    .mood-item.negative {
+        background: rgba(239, 68, 68, 0.1);
+    }
+
+    .mood-emoji {
+        font-size: 36px;
+        display: block;
+        margin-bottom: 8px;
+    }
+
+    .mood-count {
+        display: block;
+        font-size: 1.8rem;
+        font-weight: 700;
+    }
+
+    .mood-label {
+        font-size: 12px;
+    }
+
+    .frequent-mood {
+        padding: 14px 20px;
+        border-radius: 12px;
+        font-size: 14px;
+    }
+
+    .mood-badge {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 4px 14px;
+        border-radius: 20px;
+        font-weight: 600;
+        margin-left: 8px;
+    }
+
+    /* Tags */
+    .tags-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .tag-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        border-radius: 20px;
+        border: 1px solid;
+        font-size: 13px;
+        font-weight: 500;
+    }
+
+    .tag-count {
+        background: rgba(0, 0, 0, 0.1);
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 11px;
+    }
+
+    .empty-message {
+        font-size: 14px;
+    }
+
+    /* Actions */
+    .actions-section {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .action-btn {
+        flex: 1;
+        min-width: 150px;
+        padding: 14px 20px;
+        border-radius: 12px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        border: none;
+        transition: all 0.2s;
+    }
+
+    .action-btn.primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+
+    .action-btn.secondary {
+        background: rgba(102, 126, 234, 0.1);
+        color: #667eea;
+    }
+
+    .action-btn:hover {
+        transform: translateY(-2px);
+    }
+
+    @@media (max-width: 768px) {
+        .profile-page {
+            padding: 20px;
+        }
+
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .mood-summary {
+            grid-template-columns: 1fr;
+        }
+
+        .user-card {
+            flex-direction: column;
+            text-align: center;
+        }
+    }
+</style>
+
+@code {
+    @inject JournalMaui.Services.AuthService AuthService
+
+    private int _totalEntries = 0;
+    private int _totalWords = 0;
+    private int _currentStreak = 0;
+    private int _longestStreak = 0;
+    private int _positiveCount = 0;
+    private int _neutralCount = 0;
+    private int _negativeCount = 0;
+    private string _mostFrequentMood = "";
+    private string _memberSince = "";
+    private Dictionary<string, int> _topTags = new();
+
+    private bool _isEditingName = false;
+    private string _tempName = "";
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        AppState.OnChange += StateHasChanged;
+        await LoadProfileData();
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+    }
+
+    private async Task LoadProfileData()
+    {
+        try
+        {
+            _totalEntries = await Db.GetEntryCountAsync();
+            _totalWords = await Db.GetTotalWordCountAsync();
+            _currentStreak = await Db.GetCurrentStreakAsync();
+            _longestStreak = await Db.GetLongestStreakAsync();
+
+            var moodDist = await Db.GetMoodDistributionAsync();
+            _positiveCount = moodDist.GetValueOrDefault("Positive", 0);
+            _neutralCount = moodDist.GetValueOrDefault("Neutral", 0);
+            _negativeCount = moodDist.GetValueOrDefault("Negative", 0);
+
+            _mostFrequentMood = await Db.GetMostFrequentMoodAsync();
+            _topTags = await Db.GetTagFrequencyAsync();
+
+            // Calculate member since
+            var allDates = await Db.GetAllEntryDatesAsync();
+            if (allDates.Any() && DateTime.TryParse(allDates.Min(), out var firstDate))
+            {
+                _memberSince = firstDate.ToString("MMMM yyyy");
+            }
+            else
+            {
+                _memberSince = DateTime.Today.ToString("MMMM yyyy");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading profile: {ex.Message}");
+        }
+    }
+
+    private void StartEditName()
+    {
+        _tempName = AppState.UserDisplayName;
+        _isEditingName = true;
+    }
+
+    private void CancelEditName()
+    {
+        _isEditingName = false;
+        _tempName = "";
+    }
+
+    private async Task PickProfileImage()
+    {
+        try
+        {
+            var result = await Microsoft.Maui.Storage.FilePicker.Default.PickAsync(new PickOptions
+            {
+                PickerTitle = "Select Profile Picture",
+                FileTypes = FilePickerFileType.Images
+            });
+
+            if (result != null)
+            {
+                var newFile = Path.Combine(FileSystem.AppDataDirectory,
+                $"profile_pic_{DateTime.Now.Ticks}{Path.GetExtension(result.FileName)}");
+                using var stream = await result.OpenReadAsync();
+                using var newStream = File.Create(newFile);
+                await stream.CopyToAsync(newStream);
+
+                AppState.UpdateProfilePicture(newFile);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error picking image: {ex.Message}");
+        }
+    }
+
+    private async Task SaveName()
+    {
+        if (!string.IsNullOrWhiteSpace(_tempName))
+        {
+            await AuthService.UpdateDisplayNameAsync(_tempName);
+            AppState.UpdateUserDisplayName(_tempName);
+            _isEditingName = false;
+        }
+    }
+}

@@ -1,0 +1,655 @@
+@page "/export"
+@using JournalMaui.Services
+@using JournalMaui.Models
+@using JournalMate.Services
+@inject JournalDatabase Db
+@inject AppCurrentState AppState
+@inject NavigationManager NavManager
+@implements IDisposable
+
+<div class="export-page">
+    <header class="page-header">
+        <h1 class="page-title">📄 Export Journal</h1>
+        <p class="page-subtitle">Export your journal entries to a file</p>
+    </header>
+
+    <div class="export-grid">
+        <div class="left-column">
+            <div class="export-card glass-card">
+                <h2 class="card-title">Select Date Range</h2>
+
+                <div class="date-range-form">
+                    <div class="form-group">
+                        <label>Start Date</label>
+                        <input type="date" class="date-input" @bind="_startDate" @bind:after="LoadPreviewCustom"
+                            max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                    </div>
+                    <div class="form-group">
+                        <label>End Date</label>
+                        <input type="date" class="date-input" @bind="_endDate" @bind:after="LoadPreviewCustom"
+                            max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                    </div>
+                </div>
+
+                <div class="quick-ranges">
+                    <button class="range-btn @(_selectedRange == "week" ? "active" : "")"
+                        @onclick='() => SelectRange("week")'>
+                        Last 7 Days
+                    </button>
+                    <button class="range-btn @(_selectedRange == "month" ? "active" : "")"
+                        @onclick='() => SelectRange("month")'>
+                        Last 30 Days
+                    </button>
+                    <button class="range-btn @(_selectedRange == "year" ? "active" : "")"
+                        @onclick='() => SelectRange("year")'>
+                        Last Year
+                    </button>
+                    <button class="range-btn @(_selectedRange == "all" ? "active" : "")"
+                        @onclick='() => SelectRange("all")'>
+                        All Time
+                    </button>
+                </div>
+
+                @if (_entriesInRange > 0)
+                {
+                    <div class="preview-stats">
+                        <div class="stat">
+                            <span class="stat-value">@_entriesInRange</span>
+                            <span class="stat-label">ENTRIES</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-value">@_totalWordsInRange</span>
+                            <span class="stat-label">WORDS</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-value">@_dateRangeDays</span>
+                            <span class="stat-label">DAYS</span>
+                        </div>
+                    </div>
+                }
+
+                <button class="export-btn" @onclick="ExportEntries" disabled="@(_isExporting || _entriesInRange == 0)">
+                    @if (_isExporting)
+                    {
+                        <div class="spinner"></div>
+                        <span>Exporting...</span>
+                    }
+                    else
+                    {
+                        <span>📥 Export @_entriesInRange Entries</span>
+                    }
+                </button>
+
+                @if (!string.IsNullOrEmpty(_message))
+                {
+                    <div class="message-box @(_isError ? "error" : "success")">
+                        @_message
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="right-column">
+            @if (_previewEntries.Any())
+            {
+                <div class="preview-card glass-card">
+                    <h2 class="card-title">Entries to Export</h2>
+                    <div class="entries-preview">
+                        @foreach (var entry in _previewEntries.Take(8))
+                        {
+                            if (entry == null) continue;
+
+                            var entryDateStr = entry.DateKey;
+                            DateTime.TryParse(entryDateStr, out var entryDate);
+
+                            var moodEmoji = "";
+                            var moodColor = "var(--jm-text-muted)";
+
+                            try
+                            {
+                                moodEmoji = MoodData.GetMoodEmoji(entry.PrimaryMood);
+                                moodColor = MoodData.GetCategoryColor(entry.MoodCategory);
+                            }
+                            catch { }
+
+                            <div class="preview-item">
+                                <div class="preview-header">
+                                    <span class="preview-date">@entryDate.ToString("MMM dd")</span>
+                                    <span class="preview-mood" style="color: @moodColor">
+                                        @moodEmoji
+                                    </span>
+                                </div>
+                                <div class="preview-body">
+                                    <span class="preview-title">@(string.IsNullOrEmpty(entry.Title) ? "No Title" :
+                                                                        entry.Title)</span>
+                                </div>
+                            </div>
+                        }
+                        @if (_previewEntries.Count > 8)
+                        {
+                            <div class="preview-more">
+                                +@(_previewEntries.Count - 8) more entries...
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <div class="info-card glass-card">
+                <h3>💡 Export Information</h3>
+                <ul>
+                    <li>Entries are exported as a text file you can print or convert to PDF</li>
+                    <li>Each entry includes the date, title, mood, tags, and content</li>
+                    <li>The export file will be saved to your device's app directory</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .export-page {
+        min-height: 100vh;
+        padding: 32px 40px;
+        background: var(--jm-bg-primary);
+    }
+
+    .page-header {
+        margin-bottom: 32px;
+    }
+
+    .page-title {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--jm-text-primary);
+        margin: 0 0 8px 0;
+    }
+
+    .page-subtitle {
+        font-size: 14px;
+        color: var(--jm-text-secondary);
+        margin: 0;
+    }
+
+    .export-grid {
+        display: grid;
+        grid-template-columns: 400px 1fr;
+        gap: 28px;
+        align-items: start;
+        max-width: 1100px;
+    }
+
+    .left-column,
+    .right-column {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+    }
+
+    .export-card,
+    .preview-card,
+    .info-card {
+        padding: 32px;
+    }
+
+    .card-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--jm-text-primary);
+        margin: 0 0 20px 0;
+    }
+
+    .date-range-form {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--jm-text-muted);
+        margin-bottom: 8px;
+    }
+
+    .date-input {
+        width: 100%;
+        padding: 12px 14px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-md);
+        color: var(--jm-text-primary);
+        font-size: 15px;
+        outline: none;
+    }
+
+    .date-input:focus {
+        border-color: var(--jm-accent);
+    }
+
+    .quick-ranges {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 24px;
+    }
+
+    .range-btn {
+        padding: 10px 14px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-full);
+        color: var(--jm-text-secondary);
+        font-size: 13px;
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+        white-space: nowrap;
+    }
+
+    .range-btn:hover {
+        background: var(--jm-surface-hover);
+    }
+
+    .range-btn.active {
+        background: var(--jm-accent);
+        border-color: var(--jm-accent);
+        color: white;
+    }
+
+    .preview-stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1px;
+        background: var(--jm-border);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-md);
+        margin-bottom: 20px;
+        overflow: hidden;
+    }
+
+    .stat {
+        background: var(--jm-surface);
+        padding: 16px 8px;
+        text-align: center;
+    }
+
+    .stat-value {
+        display: block;
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--jm-text-primary);
+        margin-bottom: 4px;
+    }
+
+    .stat-label {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--jm-text-muted);
+    }
+
+    .export-btn {
+        width: 100%;
+        padding: 16px;
+        background: var(--jm-accent);
+        border: none;
+        border-radius: var(--jm-radius-md);
+        color: white;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: all var(--jm-transition-fast);
+    }
+
+    .export-btn:hover:not(:disabled) {
+        background: var(--jm-accent-dark);
+        transform: translateY(-1px);
+    }
+
+    .export-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .spinner {
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    @@keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .message-box {
+        margin-top: 16px;
+        padding: 12px;
+        border-radius: var(--jm-radius-md);
+        text-align: center;
+        font-size: 12px;
+    }
+
+    .message-box.success {
+        background: rgba(34, 197, 94, 0.1);
+        color: var(--jm-success);
+    }
+
+    .message-box.error {
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--jm-error);
+    }
+
+    /* Preview */
+    .entries-preview {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .preview-item {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 14px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-md);
+        transition: all var(--jm-transition-normal);
+        cursor: default;
+    }
+
+    .preview-item:hover {
+        transform: translateY(-2px);
+        background: var(--jm-surface-hover);
+        border-color: var(--jm-accent-glow);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .preview-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .preview-date {
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--jm-text-muted);
+    }
+
+    .preview-title {
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--jm-text-primary);
+        word-break: break-word;
+    }
+
+    .preview-mood {
+        font-size: 24px;
+    }
+
+    .preview-more {
+        text-align: center;
+        padding: 8px;
+        font-size: 12px;
+        color: var(--jm-text-muted);
+        font-style: italic;
+    }
+
+    /* Info */
+    .info-card {
+        background: rgba(147, 51, 234, 0.05);
+        border: 1px solid rgba(147, 51, 234, 0.1);
+    }
+
+    .info-card h3 {
+        font-size: 14px;
+        color: var(--jm-text-primary);
+        margin: 0 0 12px 0;
+    }
+
+    .info-card ul {
+        margin: 0;
+        padding-left: 18px;
+    }
+
+    .info-card li {
+        font-size: 12px;
+        color: var(--jm-text-secondary);
+        line-height: 1.6;
+        margin-bottom: 6px;
+    }
+
+    @@media (max-width: 900px) {
+        .export-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .export-card,
+        .preview-card,
+        .info-card {
+            padding: 20px;
+        }
+    }
+
+    @@media (max-width: 600px) {
+        .export-page {
+            padding: 20px;
+        }
+    }
+
+    @@media (max-width: 600px) {
+        .export-page {
+            padding: 20px;
+        }
+
+        .date-range-form {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+@code {
+    private DateTime _startDate = DateTime.Today.AddDays(-30);
+    private DateTime _endDate = DateTime.Today;
+    private string _selectedRange = "month";
+
+    private int _entriesInRange = 0;
+    private int _totalWordsInRange = 0;
+    private int _dateRangeDays = 0;
+    private List<JournalEntry> _previewEntries = new();
+
+    private bool _isExporting = false;
+    private string _message = "";
+    private bool _isError = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            AppState.OnChange += StateHasChanged;
+            await LoadPreview();
+        }
+        catch (Exception ex)
+        {
+            _message = $"Error initializing export: {ex.Message}";
+            _isError = true;
+        }
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+    }
+
+    private async Task SelectRange(string range)
+    {
+        _selectedRange = range;
+        _endDate = DateTime.Today;
+
+        _startDate = range switch
+        {
+            "week" => DateTime.Today.AddDays(-7),
+            "month" => DateTime.Today.AddDays(-30),
+            "year" => DateTime.Today.AddYears(-1),
+            "all" => DateTime.MinValue,
+            _ => _startDate
+        };
+
+        await LoadPreview();
+    }
+
+    private async Task LoadPreviewCustom()
+    {
+        _selectedRange = "custom";
+        await LoadPreview();
+    }
+
+    private async Task LoadPreview()
+    {
+        try
+        {
+            DateTime effectiveStart = _startDate;
+            DateTime effectiveEnd = _endDate;
+
+            if (_selectedRange == "all")
+            {
+                _previewEntries = await Db.GetAllEntriesAsync() ?? new List<JournalEntry>();
+            }
+            else
+            {
+                // Ensure the range is inclusive and correct
+                if (effectiveStart > effectiveEnd)
+                {
+                    // Swap if user picked start > end
+                    var temp = effectiveStart;
+                    effectiveStart = effectiveEnd;
+                    effectiveEnd = temp;
+                }
+
+                _previewEntries = await Db.GetEntriesByDateRangeAsync(effectiveStart, effectiveEnd) ?? new List<JournalEntry>();
+            }
+
+            _entriesInRange = _previewEntries.Count;
+            _totalWordsInRange = _previewEntries.Sum(e => e.WordCount);
+
+            int days = 0;
+            if (_selectedRange == "all")
+            {
+                if (_previewEntries.Any() && DateTime.TryParse(_previewEntries.Last().DateKey, out var lastDate))
+                {
+                    days = (int)(DateTime.Today - lastDate).TotalDays;
+                }
+            }
+            else
+            {
+                days = (int)(_endDate - _startDate).TotalDays + 1;
+            }
+            _dateRangeDays = days;
+        }
+        catch (Exception ex)
+        {
+            _message = $"Error loading preview: {ex.Message}";
+            _isError = true;
+            _previewEntries = new List<JournalEntry>();
+            _entriesInRange = 0;
+        }
+    }
+
+    @inject JournalMate.Services.IFileSaverService FileSaver
+
+    @code {
+        // ... existing properties ...
+
+        private async Task ExportEntries()
+        {
+            if (_entriesInRange == 0) return;
+
+            _isExporting = true;
+            _message = "";
+
+            try
+            {
+                var content = new System.Text.StringBuilder();
+                // ... [content building logic remains the same] ...
+                content.AppendLine("═══════════════════════════════════════════════════════════");
+                content.AppendLine(" JOURNALMATE EXPORT ");
+                content.AppendLine($" Generated: {DateTime.Now:MMMM dd, yyyy h:mm tt}");
+                content.AppendLine("═══════════════════════════════════════════════════════════");
+                content.AppendLine();
+                var rangeText = _selectedRange == "all" ? "All Time" : $"{_startDate:MMM dd, yyyy} - {_endDate:MMM dd, yyyy}";
+                content.AppendLine($"Date Range: {rangeText}");
+                content.AppendLine($"Total Entries: {_entriesInRange}");
+                content.AppendLine($"Total Words: {_totalWordsInRange}");
+                content.AppendLine();
+                content.AppendLine("═══════════════════════════════════════════════════════════");
+                content.AppendLine();
+
+                foreach (var entry in _previewEntries)
+                {
+                    DateTime.TryParse(entry.DateKey, out var entryDate);
+                    content.AppendLine("───────────────────────────────────────────────────────────");
+                    content.AppendLine($"📅 {entryDate:dddd, MMMM dd, yyyy}");
+                    content.AppendLine($"📝 {entry.Title}");
+                    content.AppendLine($"😊 Mood: {entry.PrimaryMood}" +
+                    (string.IsNullOrEmpty(entry.SecondaryMood1) ? "" : $", {entry.SecondaryMood1}") +
+                    (string.IsNullOrEmpty(entry.SecondaryMood2) ? "" : $", {entry.SecondaryMood2}"));
+
+                    if (!string.IsNullOrEmpty(entry.Category))
+                        content.AppendLine($"📁 Category: {entry.Category}");
+
+                    if (entry.GetTagsList().Any())
+                        content.AppendLine($"🏷️ Tags: {string.Join(", ", entry.GetTagsList())}");
+
+                    content.AppendLine($"📊 Word Count: {entry.WordCount}");
+                    content.AppendLine();
+                    content.AppendLine(entry.Content);
+                    content.AppendLine();
+                }
+
+                content.AppendLine("═══════════════════════════════════════════════════════════");
+                content.AppendLine(" END OF JOURNAL EXPORT ");
+                content.AppendLine("═══════════════════════════════════════════════════════════");
+
+                var suggestedFileName = $"JournalMate_Export_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+                var savedPath = await FileSaver.SaveFileAsync(suggestedFileName, content.ToString());
+
+                if (savedPath != null)
+                {
+                    _message = $"✓ Exported successfully! File saved to: {savedPath}";
+                    _isError = false;
+                }
+                else
+                {
+                    _message = "Export cancelled by user.";
+                    _isError = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                _message = $"Export failed: {ex.Message}";
+                _isError = true;
+            }
+            finally
+            {
+                _isExporting = false;
+            }
+        }
+    }
+}

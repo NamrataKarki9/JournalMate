@@ -1,0 +1,1064 @@
+﻿@page "/login"
+@page "/"
+@inject JournalMate.Services.AppCurrentState CurrentAppState
+@inject JournalMaui.Services.AuthService AuthService
+@inject NavigationManager NavManager
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<div @ref="_loginPageRef" class="login-container @(_isFirstTimeSetup ? "setup-mode" : "unlock-mode") @(CurrentAppState.IsDarkMode ? "theme-dark" : "theme-light")"
+    @onmousemove="HandleMouseMove" @onkeydown="HandleKeyDown" tabindex="0">
+
+    <!-- Theme Toggle Button (Always Visible) -->
+    <button class="theme-toggle-login" @onclick="ToggleTheme" title="Toggle Theme">
+        @if (CurrentAppState.IsDarkMode)
+        {
+            <span class="theme-icon">☀️</span>
+        }
+        else
+        {
+            <span class="theme-icon">🌙</span>
+        }
+    </button>
+
+    <!-- Background Interactive Elements -->
+    <div class="background-elements" style="transform: translate(@(_mouseX * 0.02)px, @(_mouseY * 0.02)px)">
+        <div class="bg-shape shape-1"></div>
+        <div class="bg-shape shape-2"></div>
+        <div class="bg-shape shape-3"></div>
+    </div>
+
+    @if (!_isFirstTimeSetup)
+    {
+        <div class="top-date-time">
+            <div class="time">@_currentTime?.ToString("h:mm tt")</div>
+            <div class="date">@_currentTime?.ToString("D").ToUpper()</div>
+        </div>
+    }
+
+    <div class="main-content">
+        @if (_isFirstTimeSetup)
+        {
+            <!-- SETUP MODE -->
+            <div class="logo-header">
+                <span class="logo-icon">🟣</span>
+                <span class="logo-text">JournalMate</span>
+            </div>
+            <button class="help-btn">Help</button>
+
+            <div class="setup-card glass-card">
+                <h1 class="welcome-title">Welcome to your safe space</h1>
+                <p class="welcome-subtitle">Craft your private sanctuary with every thought.</p>
+
+                <div class="form-section">
+                    <div class="input-group">
+                        <label>What should we call you?</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon">👤</span>
+                            <input type="text" placeholder="Your name or nickname" @bind="_userName"
+                                @bind:event="oninput" />
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Set your 4-digit PIN</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon">🔐</span>
+                            <input type="password" readonly value="@_enteredPin" placeholder="• • • •" />
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Confirm PIN</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon">🛡️</span>
+                            <input type="password" readonly value="@_confirmPin" placeholder="• • • •" />
+                        </div>
+                    </div>
+
+                    <button class="action-btn primary" @onclick="ProcessLogin"
+                        disabled="@(_isAuthenticating || _enteredPin.Length < 4 || _confirmPin.Length < 4 || string.IsNullOrWhiteSpace(_userName))">
+                        @if (_isAuthenticating)
+                        {
+                            <span>Setting up...</span>
+                        }
+                        else
+                        {
+                            <span>Start My Journey</span>
+                        }
+                    </button>
+                </div>
+            </div>
+
+            <div class="footer-note">
+                <span>🛡️ PRIVATE & SECURE LOCALLY ENCRYPTED JOURNALING</span>
+            </div>
+        }
+        else
+        {
+            <!-- UNLOCK MODE -->
+            <div class="unlock-card glass-card">
+                <div class="brand">
+                    <span class="brand-icon">🟣</span>
+                    <span class="brand-name">JournalMate</span>
+                </div>
+
+                <div class="user-profile">
+                    <div class="profile-image" style="background-image: url('@CurrentAppState.ProfilePictureDisplayPath');">
+                    </div>
+                </div>
+
+                <h2 class="welcome-back">Welcome back, @CurrentAppState.UserDisplayName</h2>
+                <div class="security-status">Security Lock Active</div>
+
+                @if (!string.IsNullOrEmpty(_loginErrorMessage))
+                {
+                    <div class="login-feedback @(_isLockedOut ? "locked-error" : "attempt-error")">
+                        @_loginErrorMessage
+                    </div>
+                }
+
+                <p class="instruction">Enter your 4-digit PIN to continue journaling</p>
+
+                <div class="pin-display">
+                    @for (int i = 0; i < 4; i++)
+                    {
+                        <div class="pin-dot @(i < _enteredPin.Length ? "active" : "")"></div>
+                    }
+                </div>
+
+                <button class="action-btn gradient" @onclick="ProcessLogin"
+                    disabled="@(_enteredPin.Length != 4 || _isAuthenticating)">
+                    @if (_isAuthenticating)
+                    {
+                        <span>Verifying...</span>
+                    }
+                    else
+                    {
+                        <span>Quick Unlock ➝</span>
+                    }
+                </button>
+
+                <a href="#" class="forgot-pin">Forgot your PIN?</a>
+            </div>
+            <div class="session-secure">
+                <span>🛡️ End-to-end encrypted session</span>
+            </div>
+        }
+    </div>
+
+    <!-- Virtual Numpad -->
+    <div class="virtual-numpad">
+        @foreach (var num in new[] { "1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫" })
+        {
+            if (num == "⌫")
+            {
+                <button class="numpad-btn" @onclick="DeleteLastDigit">⌫</button>
+            }
+            else if (!string.IsNullOrEmpty(num))
+            {
+                <button class="numpad-btn" @onclick="() => AddDigit(num)">@num</button>
+            }
+            else
+            {
+                <div class="numpad-spacer"></div>
+            }
+        }
+    </div>
+</div>
+
+<style>
+    :root {
+        --primary-purple: #4A0E8F;
+        --accent-purple: #9333EA;
+        --gradient-purple: linear-gradient(135deg, #A855F7 0%, #7C3AED 100%);
+    }
+
+    /* ========== THEME TOGGLE BUTTON ========== */
+    .theme-toggle-login {
+        position: fixed;
+        top: 24px;
+        right: 24px;
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: 1px solid;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        z-index: 1000;
+        transition: all 0.3s ease;
+        backdrop-filter: blur(10px);
+    }
+
+    /* Light theme toggle styling */
+    .theme-light .theme-toggle-login {
+        background: rgba(255, 255, 255, 0.9);
+        border-color: rgba(74, 14, 143, 0.2);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .theme-light .theme-toggle-login:hover {
+        background: rgba(255, 255, 255, 1);
+        border-color: var(--accent-purple);
+        transform: rotate(180deg) scale(1.1);
+        box-shadow: 0 6px 16px rgba(147, 51, 234, 0.3);
+    }
+
+    /* Dark theme toggle styling */
+    .theme-dark .theme-toggle-login {
+        background: rgba(30, 20, 45, 0.8);
+        border-color: rgba(168, 85, 247, 0.3);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .theme-dark .theme-toggle-login:hover {
+        background: rgba(30, 20, 45, 1);
+        border-color: var(--accent-purple);
+        transform: rotate(180deg) scale(1.1);
+        box-shadow: 0 6px 16px rgba(147, 51, 234, 0.5);
+    }
+
+    .theme-icon {
+        display: block;
+        transition: transform 0.3s ease;
+    }
+
+    /* ========== BASE CONTAINER ========== */
+    .login-container {
+        height: 100vh;
+        width: 100vw;
+        position: fixed;
+        top: 0;
+        left: 0;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        outline: none;
+        z-index: 100;
+        transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    /* ========== LIGHT THEME - SETUP MODE ========== */
+    .setup-mode.theme-light {
+        background: linear-gradient(135deg, #F3F0FF 0%, #E9D5FF 100%);
+        color: #333;
+    }
+
+    .setup-mode.theme-light .bg-shape {
+        opacity: 0.4;
+        filter: blur(40px);
+        background: #E9D5FF;
+        border-radius: 50%;
+    }
+
+    .setup-mode.theme-light .logo-text {
+        color: #4A148C;
+    }
+
+    .setup-mode.theme-light .help-btn {
+        border: 1px solid #ddd;
+        background: rgba(255, 255, 255, 0.8);
+        color: #666;
+    }
+
+    .setup-mode.theme-light .setup-card {
+        background: rgba(255, 255, 255, 0.95);
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+    }
+
+    .setup-mode.theme-light .welcome-title {
+        color: #2D0050;
+    }
+
+    .setup-mode.theme-light .welcome-subtitle {
+        color: #888;
+    }
+
+    .setup-mode.theme-light .input-group label {
+        color: #555;
+    }
+
+    .setup-mode.theme-light .input-wrapper input {
+        background: #FAFAFA;
+        border: 1px solid #eee;
+        color: #333;
+    }
+
+    .setup-mode.theme-light .input-wrapper input:focus {
+        background: white;
+        border-color: var(--accent-purple);
+        box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.1);
+    }
+
+    .setup-mode.theme-light .action-btn.primary {
+        background: #4A0E8F;
+        color: white;
+    }
+
+    .setup-mode.theme-light .action-btn.primary:hover {
+        background: #380870;
+    }
+
+    .setup-mode.theme-light .footer-note {
+        color: #aaa;
+    }
+
+    /* ========== DARK THEME - SETUP MODE ========== */
+    .setup-mode.theme-dark {
+        background: linear-gradient(135deg, #130b1b 0%, #1a0f2e 100%);
+        color: #fff;
+    }
+
+    .setup-mode.theme-dark .bg-shape {
+        opacity: 0.15;
+        filter: blur(60px);
+        background: #A855F7;
+        border-radius: 50%;
+    }
+
+    .setup-mode.theme-dark .logo-text {
+        color: #E9D5FF;
+    }
+
+    .setup-mode.theme-dark .help-btn {
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.05);
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    .setup-mode.theme-dark .setup-card {
+        background: rgba(30, 20, 45, 0.8);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+
+    .setup-mode.theme-dark .welcome-title {
+        color: #E9D5FF;
+    }
+
+    .setup-mode.theme-dark .welcome-subtitle {
+        color: rgba(255, 255, 255, 0.6);
+    }
+
+    .setup-mode.theme-dark .input-group label {
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    .setup-mode.theme-dark .input-wrapper input {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #fff;
+    }
+
+    .setup-mode.theme-dark .input-wrapper input:focus {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: var(--accent-purple);
+        box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.2);
+    }
+
+    .setup-mode.theme-dark .input-wrapper input::placeholder {
+        color: rgba(255, 255, 255, 0.3);
+    }
+
+    .setup-mode.theme-dark .action-btn.primary {
+        background: linear-gradient(135deg, #A855F7 0%, #7C3AED 100%);
+        color: white;
+    }
+
+    .setup-mode.theme-dark .action-btn.primary:hover {
+        background: linear-gradient(135deg, #9333EA 0%, #6D28D9 100%);
+    }
+
+    .setup-mode.theme-dark .footer-note {
+        color: rgba(255, 255, 255, 0.4);
+    }
+
+    /* ========== LIGHT THEME - UNLOCK MODE ========== */
+    .unlock-mode.theme-light {
+        background: linear-gradient(135deg, #F8F9FA 0%, #E9ECEF 100%);
+        color: #333;
+    }
+
+    .unlock-mode.theme-light .bg-shape {
+        opacity: 0.2;
+        background: #E9D5FF;
+        filter: blur(60px);
+    }
+
+    .unlock-mode.theme-light .unlock-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(0, 0, 0, 0.05);
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+    }
+
+    .unlock-mode.theme-light .brand {
+        color: #333;
+    }
+
+    .unlock-mode.theme-light .profile-image {
+        border: 3px solid var(--accent-purple);
+        box-shadow: 0 0 20px rgba(147, 51, 234, 0.3);
+    }
+
+    .unlock-mode.theme-light .welcome-back {
+        color: #2D0050;
+    }
+
+    .unlock-mode.theme-light .security-status {
+        color: #9333EA;
+    }
+
+    .unlock-mode.theme-light .instruction {
+        color: rgba(0, 0, 0, 0.5);
+    }
+
+    .unlock-mode.theme-light .pin-dot {
+        background: rgba(0, 0, 0, 0.1);
+    }
+
+    .unlock-mode.theme-light .pin-dot.active {
+        background: var(--accent-purple);
+        box-shadow: 0 0 10px rgba(147, 51, 234, 0.5);
+    }
+
+    .unlock-mode.theme-light .forgot-pin {
+        color: rgba(0, 0, 0, 0.4);
+    }
+
+    .unlock-mode.theme-light .forgot-pin:hover {
+        color: var(--accent-purple);
+    }
+
+    .unlock-mode.theme-light .top-date-time {
+        color: #333;
+    }
+
+    .unlock-mode.theme-light .top-date-time .date {
+        opacity: 0.6;
+    }
+
+    .unlock-mode.theme-light .session-secure {
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        background: rgba(255, 255, 255, 0.5);
+        color: rgba(0, 0, 0, 0.6);
+    }
+
+    /* ========== DARK THEME - UNLOCK MODE ========== */
+    .unlock-mode.theme-dark {
+        background: #130b1b;
+        color: white;
+    }
+
+    .unlock-mode.theme-dark .bg-shape {
+        opacity: 0.05;
+        background: #A855F7;
+        filter: blur(60px);
+    }
+
+    .unlock-mode.theme-dark .unlock-card {
+        background: rgba(30, 20, 45, 0.6);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+    }
+
+    .unlock-mode.theme-dark .brand {
+        color: white;
+    }
+
+    .unlock-mode.theme-dark .profile-image {
+        border: 3px solid var(--accent-purple);
+        box-shadow: 0 0 20px rgba(147, 51, 234, 0.3);
+    }
+
+    .unlock-mode.theme-dark .welcome-back {
+        color: white;
+    }
+
+    .unlock-mode.theme-dark .security-status {
+        color: #A855F7;
+    }
+
+    .unlock-mode.theme-dark .instruction {
+        color: rgba(255, 255, 255, 0.6);
+    }
+
+    .unlock-mode.theme-dark .pin-dot {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    .unlock-mode.theme-dark .pin-dot.active {
+        background: white;
+        box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+    }
+
+    .unlock-mode.theme-dark .forgot-pin {
+        color: rgba(255, 255, 255, 0.5);
+    }
+
+    .unlock-mode.theme-dark .forgot-pin:hover {
+        color: white;
+    }
+
+    .unlock-mode.theme-dark .top-date-time {
+        color: white;
+    }
+
+    .unlock-mode.theme-dark .top-date-time .date {
+        opacity: 0.7;
+    }
+
+    .unlock-mode.theme-dark .session-secure {
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.05);
+        color: rgba(255, 255, 255, 0.6);
+    }
+
+    /* ========== COMMON STYLES ========== */
+    .background-elements {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+        pointer-events: none;
+        transition: transform 0.1s ease-out;
+    }
+
+    .bg-shape {
+        position: absolute;
+        background-repeat: no-repeat;
+        background-size: contain;
+        border-radius: 50%;
+        transition: opacity 0.3s ease, filter 0.3s ease;
+    }
+
+    .shape-1 {
+        top: -10%;
+        left: -5%;
+        width: 400px;
+        height: 400px;
+    }
+
+    .shape-2 {
+        bottom: 10%;
+        right: -5%;
+        width: 300px;
+        height: 300px;
+    }
+
+    .shape-3 {
+        top: 40%;
+        left: 80%;
+        width: 200px;
+        height: 200px;
+    }
+
+    .logo-header {
+        position: absolute;
+        top: 32px;
+        left: 40px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .logo-icon {
+        font-size: 24px;
+        color: var(--primary-purple);
+    }
+
+    .logo-text {
+        font-size: 20px;
+        font-weight: 700;
+        transition: color 0.3s ease;
+    }
+
+    .help-btn {
+        position: absolute;
+        top: 32px;
+        right: 80px;
+        padding: 8px 24px;
+        border-radius: 20px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .help-btn:hover {
+        transform: translateY(-2px);
+    }
+
+    .setup-card {
+        border-radius: 24px;
+        padding: 40px;
+        width: 90%;
+        max-width: 620px;
+        text-align: center;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        transition: all 0.3s ease;
+    }
+
+    .welcome-title {
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 8px;
+        font-family: 'Georgia', serif;
+        transition: color 0.3s ease;
+    }
+
+    .welcome-subtitle {
+        font-size: 14px;
+        margin-bottom: 32px;
+        transition: color 0.3s ease;
+    }
+
+    .input-group {
+        display: flex;
+        flex-direction: column;
+        text-align: left;
+        margin-bottom: 20px;
+        width: 100%;
+    }
+
+    .input-group label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        transition: color 0.3s ease;
+    }
+
+    .input-wrapper {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .input-icon {
+        position: absolute;
+        left: 16px;
+        color: #999;
+    }
+
+    .input-wrapper input {
+        width: 100%;
+        padding: 14px 14px 14px 44px;
+        border-radius: 12px;
+        font-size: 14px;
+        outline: none;
+        transition: all 0.3s ease;
+    }
+
+    .action-btn {
+        width: 100%;
+        padding: 16px;
+        border-radius: 14px;
+        border: none;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 16px;
+        transition: all 0.3s ease;
+    }
+
+    .action-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .action-btn.gradient {
+        background: var(--gradient-purple);
+        color: white;
+        border-radius: 50px;
+        padding: 14px;
+        box-shadow: 0 4px 20px rgba(124, 58, 237, 0.4);
+    }
+
+    .action-btn.gradient:hover:not(:disabled) {
+        box-shadow: 0 6px 30px rgba(124, 58, 237, 0.6);
+        transform: translateY(-2px);
+    }
+
+    .footer-note {
+        position: absolute;
+        bottom: 24px;
+        font-size: 10px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        transition: color 0.3s ease;
+    }
+
+    .unlock-card {
+        width: 90%;
+        max-width: 540px;
+        padding: 40px;
+        border-radius: 32px;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        z-index: 10;
+        transition: all 0.3s ease;
+    }
+
+    .top-date-time {
+        position: absolute;
+        top: 32px;
+        right: 80px;
+        text-align: right;
+        transition: color 0.3s ease;
+    }
+
+    .top-date-time .time {
+        font-size: 32px;
+        font-weight: 300;
+    }
+
+    .top-date-time .date {
+        font-size: 11px;
+        letter-spacing: 1px;
+    }
+
+    .brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 24px;
+        font-size: 14px;
+        font-weight: 600;
+        transition: color 0.3s ease;
+    }
+
+    .profile-image {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background-size: cover;
+        background-position: center;
+        padding: 3px;
+        background-clip: content-box;
+        background-color: #333;
+        margin-bottom: 16px;
+        transition: all 0.3s ease;
+    }
+
+    .welcome-back {
+        font-size: 22px;
+        font-weight: 700;
+        margin: 0 0 4px 0;
+        transition: color 0.3s ease;
+    }
+
+    .security-status {
+        font-size: 12px;
+        margin-bottom: 24px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        justify-content: center;
+        transition: color 0.3s ease;
+    }
+
+    .security-status::before {
+        content: '🔒';
+        font-size: 11px;
+    }
+
+    .login-feedback {
+        font-size: 13px;
+        margin-bottom: 16px;
+        padding: 8px 16px;
+        border-radius: 12px;
+        font-weight: 500;
+        animation: fadeIn 0.3s ease;
+    }
+
+    .attempt-error {
+        background: rgba(239, 68, 68, 0.1);
+        color: #ef4444;
+        border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .locked-error {
+        background: rgba(245, 158, 11, 0.1);
+        color: #f59e0b;
+        border: 1px solid rgba(245, 158, 11, 0.2);
+    }
+
+    @@keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(-5px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .instruction {
+        font-size: 13px;
+        margin-bottom: 24px;
+        transition: color 0.3s ease;
+    }
+
+    .pin-display {
+        display: flex;
+        gap: 20px;
+        justify-content: center;
+        margin-bottom: 32px;
+    }
+
+    .pin-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        transition: all 0.3s ease;
+    }
+
+    .forgot-pin {
+        display: block;
+        margin-top: 20px;
+        font-size: 12px;
+        text-decoration: none;
+        transition: color 0.3s ease;
+    }
+
+    .session-secure {
+        position: absolute;
+        bottom: 32px;
+        left: 40px;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 12px;
+        transition: all 0.3s ease;
+    }
+
+    .virtual-numpad {
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .numpad-btn {
+        pointer-events: auto;
+    }
+
+    @@media (max-width: 600px) {
+        .setup-card,
+        .unlock-card {
+            padding: 30px 24px;
+        }
+
+        .welcome-title {
+            font-size: 24px;
+        }
+
+        .logo-header,
+        .help-btn,
+        .top-date-time,
+        .theme-toggle-login {
+            top: 20px;
+        }
+
+        .logo-header {
+            left: 24px;
+        }
+
+        .help-btn {
+            right: 80px;
+        }
+
+        .top-date-time {
+            right: 80px;
+        }
+
+        .theme-toggle-login {
+            right: 24px;
+        }
+    }
+</style>
+
+@code {
+    private string _enteredPin = "";
+    private string _confirmPin = "";
+    private string _userName = "";
+    private string _loginErrorMessage = "";
+    private bool _isAuthenticating = false;
+    private bool _isFirstTimeSetup = false;
+    private bool _isLockedOut = false;
+    private ElementReference _loginPageRef;
+    private DateTime? _currentTime;
+    private System.Timers.Timer? _timer;
+    private double _mouseX = 0;
+    private double _mouseY = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        CurrentAppState.OnChange += StateHasChanged;
+
+        try
+        {
+            _isFirstTimeSetup = !await AuthService.IsPinSetupAsync();
+
+            if (!_isFirstTimeSetup)
+            {
+                var checkResult = await AuthService.VerifyPinAsync("");
+                if (checkResult.message.Contains("locked", StringComparison.OrdinalIgnoreCase))
+                {
+                    _isLockedOut = true;
+                    _loginErrorMessage = checkResult.message;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Login] Error checking setup status: {ex.Message}");
+            _isFirstTimeSetup = true;
+        }
+
+        _currentTime = DateTime.Now;
+        _timer = new System.Timers.Timer(1000);
+        _timer.Elapsed += (s, e) =>
+        {
+            _currentTime = DateTime.Now;
+            InvokeAsync(StateHasChanged);
+        };
+        _timer.Start();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                await _loginPageRef.FocusAsync();
+            }
+            catch { }
+        }
+    }
+
+    public void Dispose()
+    {
+        CurrentAppState.OnChange -= StateHasChanged;
+        _timer?.Stop();
+        _timer?.Dispose();
+    }
+
+    private void ToggleTheme()
+    {
+        CurrentAppState.SwitchThemeMode();
+    }
+
+    private void HandleMouseMove(MouseEventArgs e)
+    {
+        _mouseX = e.ClientX;
+        _mouseY = e.ClientY;
+    }
+
+    private void AddDigit(string digit)
+    {
+        if (_isFirstTimeSetup)
+        {
+            if (_enteredPin.Length < 4) _enteredPin += digit;
+            else if (_confirmPin.Length < 4) _confirmPin += digit;
+        }
+        else
+        {
+            if (_enteredPin.Length < 4) _enteredPin += digit;
+        }
+    }
+
+    private void DeleteLastDigit()
+    {
+        if (_isFirstTimeSetup)
+        {
+            if (_confirmPin.Length > 0) _confirmPin = _confirmPin[..^1];
+            else if (_enteredPin.Length > 0) _enteredPin = _enteredPin[..^1];
+        }
+        else
+        {
+            if (_enteredPin.Length > 0) _enteredPin = _enteredPin[..^1];
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (_isAuthenticating) return;
+
+        if (e.Key.Length == 1 && char.IsDigit(e.Key[0]))
+        {
+            AddDigit(e.Key);
+        }
+        else if (e.Key == "Backspace")
+        {
+            DeleteLastDigit();
+        }
+        else if (e.Key == "Enter")
+        {
+            await ProcessLogin();
+        }
+    }
+
+    private async Task ProcessLogin()
+    {
+        if (_isFirstTimeSetup)
+        {
+            if (string.IsNullOrWhiteSpace(_userName) || _enteredPin.Length != 4 || _confirmPin.Length != 4) return;
+            if (_enteredPin != _confirmPin)
+            {
+                _enteredPin = "";
+                _confirmPin = "";
+                return;
+            }
+
+            _isAuthenticating = true;
+            bool success = await AuthService.SetupPinAsync(_enteredPin, _userName);
+            if (success)
+            {
+                CurrentAppState.AuthenticateUser(_userName);
+                NavManager.NavigateTo("/dashboard", replace: true);
+            }
+            _isAuthenticating = false;
+        }
+        else
+        {
+            if (_enteredPin.Length != 4) return;
+
+            _isAuthenticating = true;
+            _loginErrorMessage = "";
+
+            var result = await AuthService.VerifyPinAsync(_enteredPin);
+            if (result.success)
+            {
+                CurrentAppState.AuthenticateUser(result.displayName);
+                NavManager.NavigateTo("/dashboard", replace: true);
+            }
+            else
+            {
+                _enteredPin = "";
+                _loginErrorMessage = result.message;
+                _isLockedOut = result.message.Contains("locked", StringComparison.OrdinalIgnoreCase);
+            }
+            _isAuthenticating = false;
+        }
+    }
+}

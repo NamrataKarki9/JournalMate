@@ -1,5 +1,5 @@
-﻿using JournalMate.Services; 
-using JournalMaui.Services; //model
+﻿using JournalMate.Services;
+using JournalMaui.Services;
 using Microsoft.Extensions.Logging;
 using MudBlazor.Services;
 
@@ -15,33 +15,38 @@ namespace JournalMate
                 .ConfigureFonts(fonts =>
                 {
                     fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
+                    fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
                 });
 
             builder.Services.AddMauiBlazorWebView();
+            builder.Services.AddMudServices();
 
 #if DEBUG
-    		builder.Services.AddBlazorWebViewDeveloperTools();
-            //builder.Services.AddSingleton<AppState>();
-            builder.Services.AddMudServices();
-            builder.Services.AddSingleton<ToggleTheme>();
-
-            builder.Services.AddSingleton<JournalMate.Services.AppCurrentState>();
-            builder.Services.AddSingleton<JournalDatabase>();
-
-
-
-
-
-
+            builder.Services.AddBlazorWebViewDeveloperTools();
             builder.Logging.AddDebug();
 #endif
+
+            builder.Services.AddSingleton<AppCurrentState>();
+
             builder.Services.AddSingleton(sp =>
             {
+                var appState = sp.GetRequiredService<AppCurrentState>();
                 var dbPath = Path.Combine(FileSystem.AppDataDirectory, "journal.db3");
-                var db = new JournalDatabase(dbPath);
-                _ = db.InitAsync(); // fire once (safe), no UI thread blocking
+                var db = new JournalDatabase(dbPath, appState);
+                Task.Run(async () => await db.InitAsync());
                 return db;
             });
+
+            builder.Services.AddSingleton<ToggleTheme>();
+
+            builder.Services.AddSingleton<AuthService>(sp =>
+            {
+                var db = sp.GetRequiredService<JournalDatabase>();
+                return new AuthService(db);
+            });
+
+            builder.Services.AddSingleton<IFileSaverService, FileSaverService>();
+
             return builder.Build();
         }
     }

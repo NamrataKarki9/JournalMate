@@ -1,0 +1,974 @@
+@page "/calendar"
+@using JournalMaui.Services
+@using JournalMaui.Models
+@inject JournalDatabase Db
+@inject NavigationManager NavManager
+@inject JournalMate.Services.AppCurrentState AppState
+@implements IDisposable
+
+<div class="calendar-page">
+    <header class="page-header">
+        <div class="header-left">
+            <h1 class="page-title">Journal History</h1>
+            <p class="page-subtitle">Visualizing your growth</p>
+        </div>
+        <div class="header-right">
+            <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" placeholder="Search entries..." class="search-input" />
+            </div>
+        </div>
+    </header>
+
+    <div class="calendar-layout">
+        <main class="calendar-main">
+            <div class="month-header">
+                <button class="month-nav-btn" @onclick="PreviousMonth">◀</button>
+                <h2 class="month-title">@_currentMonth.ToString("MMMM yyyy")</h2>
+                <button class="month-nav-btn" @onclick="NextMonth"
+                    disabled="@(_currentMonth.Year >= DateTime.Today.Year && _currentMonth.Month >= DateTime.Today.Month)">
+                    ▶
+                </button>
+                <div class="view-toggle">
+                    <button class="toggle-btn @(!_isListView ? "active" : "")" @onclick="() => ToggleView(false)">Grid
+                        View</button>
+                    <button class="toggle-btn @(_isListView ? "active" : "")" @onclick="() => ToggleView(true)">List
+                        View</button>
+                </div>
+            </div>
+
+            <div class="breadcrumb">
+                <span>History</span>
+                <span class="separator">›</span>
+                <span class="current">@_currentMonth.ToString("MMMM yyyy")</span>
+            </div>
+
+            @if (!_isListView)
+            {
+                <div class="calendar-grid glass-card">
+                    <div class="weekday-row">
+                        @foreach (var day in new[] { "SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT" })
+                        {
+                            <div class="weekday">@day</div>
+                        }
+                    </div>
+
+                    <div class="days-grid">
+                        @for (int i = 0; i < (int)_firstDayOfMonth.DayOfWeek; i++)
+                        {
+                            <div class="day-cell empty"></div>
+                        }
+                        @for (int day = 1; day <= _daysInMonth; day++)
+                        {
+                            var currentDay = day;
+                            var date = new DateTime(_currentMonth.Year, _currentMonth.Month, currentDay);
+                            var dateKey = date.ToString("yyyy-MM-dd");
+                            var entry = _entries.FirstOrDefault(e => e.DateKey == dateKey);
+                            var hasEntry = entry != null;
+                            var isToday = date.Date == DateTime.Today;
+                            var isFuture = date.Date > DateTime.Today;
+                            var isSelected = _selectedEntry?.DateKey == dateKey;
+
+                            <div class="day-cell @(hasEntry ? "has-entry" : "") @(isToday ? "today" : "") @(isFuture ? "future" : "") @(isSelected ? "selected" : "")"
+                                @onclick="() => SelectDay(entry, date)">
+                                <span class="day-number">@currentDay</span>
+                                @if (hasEntry)
+                                {
+                                    <span class="entry-icon" style="color: @GetMoodColor(entry!.MoodCategory)">
+                                        @GetMoodIcon(entry.PrimaryMood)
+                                    </span>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="entries-list-view glass-card">
+                    @if (!_entries.Any())
+                    {
+                        <div class="no-entries-msg">
+                            <span class="msg-icon">📭</span>
+                            <p>No entries found for this month.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="list-container">
+                            @foreach (var entry in _entries.OrderByDescending(e => e.DateKey))
+                            {
+                                DateTime.TryParse(entry.DateKey, out var date);
+                                <div class="list-item @(_selectedEntry?.Id == entry.Id ? "selected" : "")"
+                                    @onclick="() => SelectDay(entry, date)">
+                                    <div class="item-date-box">
+                                        <span class="item-day">@date.ToString("dd")</span>
+                                        <span class="item-month">@date.ToString("MMM")</span>
+                                    </div>
+                                    <div class="item-content">
+                                        <div class="item-header">
+                                            <h4 class="item-title">@(string.IsNullOrEmpty(entry.Title) ? "Untitled" : entry.Title)
+                                            </h4>
+                                            <span class="item-mood" style="color: @GetMoodColor(entry.MoodCategory)">
+                                                @GetMoodIcon(entry.PrimaryMood) @entry.PrimaryMood
+                                            </span>
+                                        </div>
+                                        <p class="item-snippet">@TruncateText(entry.Content, 120)</p>
+                                        <div class="item-footer">
+                                            <span class="item-time">@entry.CreatedAt.ToString("h:mm tt")</span>
+                                            @if (entry.GetTagsList().Any())
+                                            {
+                                                <div class="item-tags">
+                                                    @foreach (var tag in entry.GetTagsList().Take(2))
+                                                    {
+                                                        <span class="item-tag">#@tag</span>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </main>
+
+        <aside class="control-sidebar">
+            <nav class="view-nav">
+                <button class="nav-btn active">
+                    <span class="nav-icon">📅</span>
+                    <span>Monthly Grid</span>
+                </button>
+                <button class="nav-btn">
+                    <span class="nav-icon">📊</span>
+                    <span>Weekly View</span>
+                </button>
+                <button class="nav-btn">
+                    <span class="nav-icon">😊</span>
+                    <span>Mood Analysis</span>
+                </button>
+                <button class="nav-btn">
+                    <span class="nav-icon">🏷️</span>
+                    <span>Global Tags</span>
+                </button>
+            </nav>
+
+            <div class="mood-key">
+                <span class="key-title">MOOD KEY</span>
+                <div class="key-item">
+                    <span class="key-dot" style="background: rgba(244, 114, 182, 0.2);">✨</span>
+                    <span>Great</span>
+                </div>
+                <div class="key-item">
+                    <span class="key-dot" style="background: rgba(34, 197, 94, 0.2);">🌿</span>
+                    <span>Peaceful</span>
+                </div>
+                <div class="key-item">
+                    <span class="key-dot" style="background: rgba(245, 158, 11, 0.2);">☁️</span>
+                    <span>Reflective</span>
+                </div>
+                <div class="key-item">
+                    <span class="key-dot" style="background: rgba(249, 115, 22, 0.2);">🔥</span>
+                    <span>Productive</span>
+                </div>
+            </div>
+
+            <button class="new-entry-btn" @onclick='() => NavManager.NavigateTo("/diary")'>
+                <span>+</span> New Entry
+            </button>
+        </aside>
+
+        @if (_selectedEntry != null)
+        {
+            <aside class="preview-panel">
+                <button class="close-preview" @onclick="ClosePreview">✕</button>
+
+                <div class="preview-header">
+                    @{
+                        DateTime.TryParse(_selectedEntry.DateKey, out var entryDate);
+                    }
+                    <h3 class="preview-date">@entryDate.ToString("MMM d, yyyy")</h3>
+                    <span class="preview-day">@entryDate.ToString("dddd").ToUpper() MORNING</span>
+                </div>
+
+                <div class="preview-mood">
+                    <span class="mood-badge" style="background: @GetMoodColor(_selectedEntry.MoodCategory)">
+                        @MoodData.GetMoodEmoji(_selectedEntry.PrimaryMood) @_selectedEntry.PrimaryMood
+                    </span>
+                    <span class="preview-time">@_selectedEntry.CreatedAt.ToString("h:mm tt")</span>
+                </div>
+
+                <h4 class="preview-title">@_selectedEntry.Title</h4>
+
+                <p class="preview-content">
+                    "@TruncateText(_selectedEntry.Content, 200)"
+                </p>
+
+                @if (_selectedEntry.GetTagsList().Any())
+                {
+                    <div class="preview-tags">
+                        @foreach (var tag in _selectedEntry.GetTagsList().Take(3))
+                        {
+                            <span class="preview-tag">#@tag.ToLower()</span>
+                        }
+                    </div>
+                }
+
+                <div class="preview-actions">
+                    <button class="action-btn share-btn">
+                        <span>📤</span> Share
+                    </button>
+                    <button class="action-btn edit-btn" @onclick="EditSelectedEntry">
+                        <span>✏️</span> Edit
+                    </button>
+                </div>
+
+                <div class="preview-image">
+                    <div class="image-placeholder">
+                        <span>"Write to remember."</span>
+                    </div>
+                </div>
+            </aside>
+        }
+    </div>
+</div>
+
+<style>
+    .calendar-page {
+        min-height: 100vh;
+        background: var(--jm-bg-primary);
+        padding: 24px 32px;
+    }
+
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+    }
+
+    .page-title {
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--jm-text-primary);
+        margin: 0;
+    }
+
+    .page-subtitle {
+        font-size: 14px;
+        color: var(--jm-text-muted);
+        margin: 4px 0 0 0;
+    }
+
+    .search-box {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-full);
+        min-width: 250px;
+    }
+
+    .search-icon {
+        font-size: 14px;
+    }
+
+    .search-input {
+        background: transparent;
+        border: none;
+        color: var(--jm-text-primary);
+        font-size: 14px;
+        outline: none;
+        flex: 1;
+    }
+
+    .search-input::placeholder {
+        color: var(--jm-text-muted);
+    }
+
+    .calendar-layout {
+        display: grid;
+        grid-template-columns: 1fr 250px auto;
+        gap: 24px;
+    }
+
+    .control-sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+    }
+
+    .view-nav {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .nav-btn {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        background: transparent;
+        border: none;
+        border-radius: var(--jm-radius-md);
+        color: var(--jm-text-secondary);
+        font-size: 14px;
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+        text-align: left;
+    }
+
+    .nav-btn:hover {
+        background: var(--jm-surface);
+    }
+
+    .nav-btn.active {
+        background: rgba(147, 51, 234, 0.15);
+        color: var(--jm-accent-light);
+    }
+
+    .nav-icon {
+        font-size: 16px;
+    }
+
+    .mood-key {
+        background: var(--jm-surface);
+        border-radius: var(--jm-radius-md);
+        padding: 16px;
+    }
+
+    .key-title {
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 1px;
+        color: var(--jm-text-muted);
+        display: block;
+        margin-bottom: 12px;
+    }
+
+    .key-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 0;
+        font-size: 13px;
+        color: var(--jm-text-secondary);
+    }
+
+    .key-dot {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+    }
+
+    .new-entry-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 14px;
+        background: var(--jm-accent);
+        color: white;
+        border: none;
+        border-radius: var(--jm-radius-md);
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+    }
+
+    .new-entry-btn:hover {
+        background: var(--jm-accent-dark);
+    }
+
+    .calendar-main {
+        flex: 1;
+    }
+
+    .month-header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 16px;
+    }
+
+    .month-nav-btn {
+        width: 36px;
+        height: 36px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-sm);
+        color: var(--jm-text-secondary);
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+    }
+
+    .month-nav-btn:hover:not(:disabled) {
+        background: var(--jm-surface-hover);
+        color: var(--jm-text-primary);
+        opacity: 1;
+    }
+
+    .month-nav-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    .month-title {
+        font-size: 20px;
+        font-weight: 600;
+        color: var(--jm-text-primary);
+        margin: 0;
+    }
+
+    .view-toggle {
+        margin-left: auto;
+        display: flex;
+        background: var(--jm-surface);
+        border-radius: var(--jm-radius-md);
+        padding: 4px;
+    }
+
+    .toggle-btn {
+        padding: 8px 16px;
+        background: transparent;
+        border: none;
+        border-radius: var(--jm-radius-sm);
+        color: var(--jm-text-muted);
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    .toggle-btn.active {
+        background: var(--jm-surface-solid);
+        color: var(--jm-text-primary);
+    }
+
+    .breadcrumb {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--jm-text-muted);
+        margin-bottom: 16px;
+    }
+
+    .breadcrumb .current {
+        color: var(--jm-text-primary);
+    }
+
+    .calendar-grid {
+        padding: 24px 24px 4px 24px;
+        max-width: 850px;
+        /* Constrain width */
+        margin: 0 auto;
+        /* Center it */
+    }
+
+    .weekday-row {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        margin-bottom: 12px;
+    }
+
+    .weekday {
+        text-align: center;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        color: var(--jm-text-muted);
+    }
+
+    .days-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 8px;
+    }
+
+    .day-cell {
+        aspect-ratio: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        border-radius: var(--jm-radius-md);
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+        min-height: 60px;
+        background: transparent;
+    }
+
+    .day-cell:hover:not(.empty):not(.future) {
+        background: var(--jm-surface-hover);
+    }
+
+    .day-cell.today {
+        background: rgba(147, 51, 234, 0.2);
+        border: 1px solid var(--jm-accent);
+    }
+
+    .day-cell.selected {
+        background: var(--jm-accent);
+    }
+
+    .day-cell.future {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    .day-cell.empty {
+        cursor: default;
+    }
+
+    .day-number {
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--jm-text-secondary);
+    }
+
+    .day-cell.today .day-number,
+    .day-cell.selected .day-number {
+        color: var(--jm-text-primary);
+    }
+
+    .entry-icon {
+        font-size: 18px;
+    }
+
+    .preview-panel {
+        width: 320px;
+        background: linear-gradient(180deg, var(--jm-accent) 0%, var(--jm-accent-dark) 100%);
+        border-radius: var(--jm-radius-xl);
+        padding: 24px;
+        position: relative;
+        animation: slideInRight 0.3s ease;
+    }
+
+    .close-preview {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        background: rgba(255, 255, 255, 0.2);
+        border: none;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        color: white;
+        cursor: pointer;
+    }
+
+    .preview-header {
+        margin-bottom: 16px;
+    }
+
+    .preview-date {
+        font-size: 24px;
+        font-weight: 700;
+        color: white;
+        margin: 0;
+    }
+
+    .preview-day {
+        font-size: 11px;
+        letter-spacing: 1px;
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    .preview-mood {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+
+    .mood-badge {
+        padding: 6px 12px;
+        border-radius: var(--jm-radius-full);
+        font-size: 12px;
+        font-weight: 500;
+        color: white;
+    }
+
+    .preview-time {
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    .preview-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: white;
+        margin: 0 0 12px 0;
+    }
+
+    .preview-content {
+        font-size: 14px;
+        line-height: 1.6;
+        color: rgba(255, 255, 255, 0.85);
+        margin: 0 0 16px 0;
+        font-style: italic;
+    }
+
+    .preview-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 20px;
+    }
+
+    .preview-tag {
+        padding: 4px 10px;
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: var(--jm-radius-full);
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.8);
+    }
+
+    .preview-actions {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+
+    .action-btn {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 12px;
+        border-radius: var(--jm-radius-md);
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+    }
+
+    .share-btn {
+        background: rgba(255, 255, 255, 0.15);
+        border: none;
+        color: white;
+    }
+
+    .edit-btn {
+        background: white;
+        border: none;
+        color: var(--jm-accent);
+    }
+
+    .preview-image {
+        margin-top: auto;
+    }
+
+    .image-placeholder {
+        background: linear-gradient(135deg, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0.4) 100%);
+        border-radius: var(--jm-radius-md);
+        padding: 40px 20px;
+        text-align: center;
+    }
+
+    .image-placeholder span {
+        font-size: 14px;
+        color: rgba(255, 255, 255, 0.6);
+        font-style: italic;
+    }
+
+    .entries-list-view {
+        padding: 24px;
+        min-height: 400px;
+        overflow-y: auto;
+    }
+
+    .no-entries-msg {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        color: var(--jm-text-muted);
+    }
+
+    .msg-icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+    }
+
+    .list-container {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .list-item {
+        display: flex;
+        gap: 20px;
+        padding: 16px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-md);
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+    }
+
+    .list-item:hover {
+        background: var(--jm-surface-hover);
+        transform: translateX(4px);
+        border-color: var(--jm-accent);
+    }
+
+    .list-item.selected {
+        background: rgba(147, 51, 234, 0.1);
+        border-color: var(--jm-accent);
+    }
+
+    .item-date-box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-width: 60px;
+        padding-right: 20px;
+        border-right: 1px solid var(--jm-border);
+    }
+
+    .item-day {
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--jm-text-primary);
+        line-height: 1;
+    }
+
+    .item-month {
+        font-size: 12px;
+        text-transform: uppercase;
+        color: var(--jm-accent-light);
+        margin-top: 4px;
+    }
+
+    .item-content {
+        flex: 1;
+    }
+
+    .item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+    }
+
+    .item-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--jm-text-primary);
+        margin: 0;
+    }
+
+    .item-mood {
+        font-size: 13px;
+        font-weight: 500;
+    }
+
+    .item-snippet {
+        font-size: 13px;
+        color: var(--jm-text-secondary);
+        margin: 0 0 12px 0;
+        line-height: 1.5;
+    }
+
+    .item-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .item-time {
+        font-size: 11px;
+        color: var(--jm-text-muted);
+    }
+
+    .item-tags {
+        display: flex;
+        gap: 8px;
+    }
+
+    .item-tag {
+        font-size: 10px;
+        color: var(--jm-accent-light);
+        background: rgba(147, 51, 234, 0.1);
+        padding: 2px 8px;
+        border-radius: var(--jm-radius-full);
+    }
+
+    @@keyframes slideInRight {
+        from {
+            opacity: 0;
+            transform: translateX(20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+
+    @@media (max-width: 1024px) {
+        .calendar-layout {
+            grid-template-columns: 1fr;
+        }
+
+        .control-sidebar {
+            display: none;
+        }
+
+        .preview-panel {
+            position: fixed;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 320px;
+            border-radius: 0;
+            z-index: 100;
+        }
+    }
+</style>
+
+@code {
+    private DateTime _currentMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime _firstDayOfMonth => new DateTime(_currentMonth.Year, _currentMonth.Month, 1);
+    private int _daysInMonth => DateTime.DaysInMonth(_currentMonth.Year, _currentMonth.Month);
+
+    private List<JournalEntry> _entries = new();
+    private JournalEntry? _selectedEntry = null;
+    private bool _isListView = false;
+
+    private void ToggleView(bool isList)
+    {
+        _isListView = isList;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        AppState.OnChange += StateHasChanged;
+        AppState.OnDataChanged += HandleDataChanged;
+        try
+        {
+            await LoadCalendarData();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error initializing calendar: {ex.Message}");
+        }
+    }
+
+    private async void HandleDataChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadCalendarData();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+        AppState.OnDataChanged -= HandleDataChanged;
+    }
+
+    private async Task LoadCalendarData()
+    {
+        try
+        {
+            var startDate = _firstDayOfMonth;
+            var endDate = new DateTime(_currentMonth.Year, _currentMonth.Month, _daysInMonth);
+            _entries = await Db.GetEntriesByDateRangeAsync(startDate, endDate);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading calendar data: {ex.Message}");
+            _entries = new List<JournalEntry>();
+        }
+    }
+
+    private async Task PreviousMonth()
+    {
+        _currentMonth = _currentMonth.AddMonths(-1);
+        await LoadCalendarData();
+    }
+
+    private async Task NextMonth()
+    {
+        if (_currentMonth.Year < DateTime.Today.Year ||
+        (_currentMonth.Year == DateTime.Today.Year && _currentMonth.Month < DateTime.Today.Month))
+        {
+            _currentMonth = _currentMonth.AddMonths(1);
+            await LoadCalendarData();
+        }
+    }
+
+    private void SelectDay(JournalEntry? entry, DateTime date)
+    {
+        if (date > DateTime.Today) return;
+
+        if (entry != null)
+        {
+            _selectedEntry = entry;
+        }
+        else
+        {
+            NavManager.NavigateTo($"/diary/{date:yyyy-MM-dd}");
+        }
+    }
+
+    private void ClosePreview()
+    {
+        _selectedEntry = null;
+    }
+
+    private void EditSelectedEntry()
+    {
+        if (_selectedEntry != null)
+        {
+            NavManager.NavigateTo($"/diary/{_selectedEntry.DateKey}");
+        }
+    }
+
+    private string GetMoodColor(string category) => category switch
+    {
+        "Positive" => "#22c55e",
+        "Neutral" => "#3b82f6",
+        "Negative" => "#ef4444",
+        _ => "#9333ea"
+    };
+
+    private string GetMoodIcon(string mood)
+    {
+        return mood?.ToLower() switch
+        {
+            "happy" or "excited" or "ecstatic" => "✨",
+            "relaxed" or "calm" or "peaceful" => "🌿",
+            "grateful" or "inspired" => "💜",
+            "thoughtful" or "reflective" or "curious" => "☁️",
+            "stressed" or "anxious" => "⚡",
+            "sad" or "lonely" => "🌧️",
+            "productive" => "🔥",
+            _ => "🌸"
+        };
+    }
+
+    private string TruncateText(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        return text.Length <= maxLength ? text : text.Substring(0, maxLength) + "...";
+    }
+}

@@ -1,0 +1,91 @@
+﻿@using MudBlazor
+@inherits LayoutComponentBase
+@inject JournalMate.Services.AppCurrentState CurrentAppState
+@implements IDisposable
+
+<MudThemeProvider Theme="@_currentTheme" IsDarkMode="@CurrentAppState.IsDarkMode" />
+<MudPopoverProvider />
+<MudSnackbarProvider />
+
+<div class="@(CurrentAppState.IsDarkMode ? "dark-theme" : "light-theme")">
+    <div class="app-container">
+        <aside class="app-sidebar">
+            <NavMenu />
+        </aside>
+
+        <main class="app-main">
+            <article class="app-content">
+                @Body
+            </article>
+        </main>
+    </div>
+</div>
+
+<style>
+    .app-container {
+        display: flex;
+        min-height: 100vh;
+        background: var(--jm-bg-primary);
+    }
+
+    .app-sidebar {
+        width: 240px;
+        min-height: 100vh;
+        background: var(--jm-surface-solid);
+        border-right: 1px solid var(--jm-border);
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        z-index: 100;
+    }
+
+    .app-main {
+        flex: 1;
+        margin-left: 240px;
+        min-height: 100vh;
+        background: var(--jm-bg-primary);
+    }
+
+    .app-content {
+        padding: 0;
+        min-height: 100vh;
+    }
+
+    @@media (max-width: 768px) {
+        .app-sidebar {
+            width: 200px;
+        }
+
+        .app-main {
+            margin-left: 200px;
+        }
+    }
+</style>
+
+@code {
+    private readonly MudTheme _currentTheme = new()
+    {
+        PaletteDark = new PaletteDark()
+        {
+            Primary = "#9333ea",
+            Secondary = "#a855f7",
+            Background = "#0f0d15",
+            Surface = "#1a1725",
+            AppbarBackground = "#0f0d15",
+            DrawerBackground = "#1a1725",
+            TextPrimary = "#ffffff",
+            TextSecondary = "rgba(255,255,255,0.7)"
+        }
+    };
+
+    protected override void OnInitialized()
+    {
+        CurrentAppState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        CurrentAppState.OnChange -= StateHasChanged;
+    }
+}

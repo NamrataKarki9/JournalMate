@@ -1,0 +1,1023 @@
+﻿@page "/diary"
+@page "/diary/{DateParam}"
+@using JournalMaui.Services
+@using JournalMaui.Models
+@inject JournalDatabase Db
+@inject NavigationManager NavManager
+@inject JournalMate.Services.AppCurrentState AppState
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="diary-page">
+    <header class="diary-header">
+        <div class="header-brand">
+            <span class="brand-icon">📖</span>
+            <span class="brand-name">JournalMate</span>
+        </div>
+
+        <div class="header-center">
+            <button class="date-picker-btn" @onclick="() => _showDatePicker = !_showDatePicker">
+                <span class="date-icon">📅</span>
+                <span>@ActiveDate.ToString("dddd, MMM d, yyyy")</span>
+                <span class="dropdown-arrow">▼</span>
+            </button>
+        </div>
+
+        <div class="header-actions">
+            <button class="btn-save" @onclick="SaveEntry" disabled="@_isSaving">
+                @if (_isSaving)
+                {
+                    <span>Saving...</span>
+                }
+                else
+                {
+                    <span>Save Changes</span>
+                }
+            </button>
+            <button class="btn-export" @onclick='() => NavManager.NavigateTo("/export")'>
+                Export Journal
+            </button>
+        </div>
+    </header>
+
+    <div class="diary-content">
+        <aside class="left-sidebar glass-card">
+            <div class="calendar-section">
+                <div class="calendar-header">
+                    <span class="calendar-title">CALENDAR</span>
+                    <div class="calendar-nav">
+                        <button @onclick="PreviousMonth">◀</button>
+                        <button @onclick="NextMonth">▶</button>
+                    </div>
+                </div>
+                <div class="mini-calendar">
+                    <div class="cal-weekdays">
+                        @foreach (var day in new[] { "S", "M", "T", "W", "T", "F", "S" })
+                        {
+                            <span>@day</span>
+                        }
+                    </div>
+                    <div class="cal-days">
+                        @for (int i = 0; i < (int)_firstDayOfMonth.DayOfWeek; i++)
+                        {
+                            <span class="cal-day empty"></span>
+                        }
+                        @for (int day = 1; day <= _daysInMonth; day++)
+                        {
+                            var currentDay = day;
+                            var isToday = _calendarMonth.Year == DateTime.Today.Year &&
+                            _calendarMonth.Month == DateTime.Today.Month &&
+                            currentDay == DateTime.Today.Day;
+                            var isSelected = _calendarMonth.Year == ActiveDate.Year &&
+                            _calendarMonth.Month == ActiveDate.Month &&
+                            currentDay == ActiveDate.Day;
+                            <span class="cal-day @(isToday ? "today" : "") @(isSelected ? "selected" : "")"
+                                  @onclick="() => SelectCalendarDay(currentDay)">
+                                @currentDay
+                            </span>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="prompt-section">
+                <span class="prompt-label">DAILY PROMPT</span>
+                <p class="prompt-text">"@GetDailyPrompt()"</p>
+                <button class="new-prompt-btn" @onclick="RefreshPrompt">
+                    🔄 New Prompt
+                </button>
+            </div>
+        </aside>
+
+        <main class="editor-main">
+            <div class="mood-bar">
+                <span class="mood-question">How are you feeling?</span>
+                <div class="mood-chips">
+                    @foreach (var mood in _quickMoods)
+                    {
+                        <button class="mood-chip-sm @(SelectedPrimaryMood == mood ? "active" : "")"
+                                @onclick="() => SelectPrimaryMood(mood)">
+                            @mood
+                        </button>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(_statusMessage))
+                {
+                    <span class="auto-save-status">@_statusMessage</span>
+                }
+            </div>
+
+            <div class="editor-card glass-card">
+                <div class="editor-content">
+                    <input type="text" class="title-input" placeholder="Title of your entry..." @bind="EntryTitle"
+                           @bind:event="oninput" />
+
+                    <div id="quill-editor" class="quill-container"></div>
+                </div>
+
+                <div class="editor-footer">
+                    <span class="word-stats">@_wordCount WORDS • @_readTime MINUTES READ</span>
+                    @if (RecordCreationTime.HasValue)
+                    {
+                        <span class="last-edited">LAST EDITED: @RecordCreationTime.Value.ToString("h:mm tt")</span>
+                    }
+                </div>
+            </div>
+        </main>
+
+        <aside class="right-sidebar">
+            <div class="tags-section glass-card">
+                <div class="section-header">
+                    <span class="section-icon">🏷️</span>
+                    <span class="section-title">TAGS</span>
+                </div>
+                <div class="tags-list">
+                    @foreach (var tag in SelectedTags)
+                    {
+                        <span class="tag">
+                            #@tag
+                            <button class="tag-remove" @onclick="() => RemoveTag(tag)">×</button>
+                        </span>
+                    }
+                </div>
+                <div class="add-tag-row">
+                    <input type="text" class="tag-input" placeholder="Add a tag..." @bind="_newTagInput"
+                           @bind:event="oninput" @onkeydown="HandleTagKeyPress" />
+                    <button class="add-tag-btn" @onclick="AddTag">+</button>
+                </div>
+            </div>
+
+            <div class="category-section glass-card">
+                <div class="section-header">
+                    <span class="section-icon">📁</span>
+                    <span class="section-title">CATEGORY</span>
+                </div>
+                <select class="category-select" @bind="SelectedCategory">
+                    <option value="">Select category...</option>
+                    @foreach (var cat in TagData.Categories)
+                    {
+                        <option value="@cat">@cat</option>
+                    }
+                </select>
+            </div>
+
+            <div class="ai-section glass-card">
+                <span class="ai-icon">🤖</span>
+                <p>Analyze sentiment with AI (coming soon)</p>
+            </div>
+        </aside>
+    </div>
+</div>
+
+@if (_showDeleteConfirm)
+{
+    <div class="modal-overlay" @onclick="HideDeleteConfirm">
+        <div class="modal-card glass-card" @onclick:stopPropagation="true">
+            <h3>Delete Entry?</h3>
+            <p>Are you sure you want to delete this entry? This cannot be undone.</p>
+            <div class="modal-actions">
+                <button class="btn-cancel" @onclick="HideDeleteConfirm">Cancel</button>
+                <button class="btn-delete" @onclick="DeleteEntry">Delete</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .diary-page {
+        min-height: 100vh;
+        background: var(--jm-bg-primary);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .diary-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 24px;
+        background: var(--jm-surface-solid);
+        border-bottom: 1px solid var(--jm-border);
+    }
+
+    .header-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .brand-icon {
+        font-size: 24px;
+    }
+
+    .brand-name {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--jm-text-primary);
+    }
+
+    .date-picker-btn {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 20px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-full);
+        color: var(--jm-text-primary);
+        font-size: 14px;
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+    }
+
+        .date-picker-btn:hover {
+            border-color: var(--jm-accent);
+        }
+
+    .dropdown-arrow {
+        font-size: 10px;
+        color: var(--jm-text-muted);
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 12px;
+    }
+
+    .btn-save {
+        padding: 10px 24px;
+        background: var(--jm-accent);
+        color: white;
+        border: none;
+        border-radius: var(--jm-radius-md);
+        font-weight: 600;
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+    }
+
+        .btn-save:hover {
+            background: var(--jm-accent-dark);
+        }
+
+    .btn-export {
+        padding: 10px 24px;
+        background: transparent;
+        color: var(--jm-text-secondary);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-md);
+        font-weight: 500;
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+    }
+
+        .btn-export:hover {
+            background: var(--jm-surface);
+        }
+
+    .diary-content {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 220px 1fr 280px;
+        gap: 0;
+        height: calc(100vh - 68px);
+    }
+
+    .left-sidebar {
+        padding: 20px;
+        border-radius: 0;
+        border: none;
+        border-right: 1px solid var(--jm-border);
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+    }
+
+    .calendar-section .calendar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+    }
+
+    .calendar-title,
+    .prompt-label {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 1px;
+        color: var(--jm-accent-light);
+    }
+
+    .calendar-nav button {
+        background: none;
+        border: none;
+        color: var(--jm-text-muted);
+        cursor: pointer;
+        padding: 4px 8px;
+    }
+
+    .mini-calendar {
+        font-size: 12px;
+    }
+
+    .cal-weekdays {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        text-align: center;
+        color: var(--jm-text-muted);
+        margin-bottom: 8px;
+    }
+
+    .cal-days {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 4px;
+    }
+
+    .cal-day {
+        aspect-ratio: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--jm-radius-sm);
+        cursor: pointer;
+        color: var(--jm-text-secondary);
+        transition: all var(--jm-transition-fast);
+    }
+
+        .cal-day:hover:not(.empty) {
+            background: var(--jm-surface-hover);
+        }
+
+        .cal-day.today {
+            background: var(--jm-accent);
+            color: white;
+        }
+
+        .cal-day.selected {
+            border: 2px solid var(--jm-accent);
+        }
+
+        .cal-day.empty {
+            cursor: default;
+        }
+
+    .prompt-section {
+        border-top: 1px solid var(--jm-border);
+        padding-top: 20px;
+    }
+
+    .prompt-text {
+        font-size: 14px;
+        color: var(--jm-text-secondary);
+        font-style: italic;
+        line-height: 1.5;
+        margin: 12px 0;
+    }
+
+    .new-prompt-btn {
+        background: none;
+        border: none;
+        color: var(--jm-accent-light);
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    .editor-main {
+        display: flex;
+        flex-direction: column;
+        padding: 24px;
+        overflow-y: auto;
+    }
+
+    .mood-bar {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+
+    .mood-question {
+        font-size: 14px;
+        color: var(--jm-text-secondary);
+    }
+
+    .mood-chips {
+        display: flex;
+        gap: 8px;
+    }
+
+    .mood-chip-sm {
+        padding: 8px 16px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-full);
+        color: var(--jm-text-secondary);
+        font-size: 13px;
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+    }
+
+        .mood-chip-sm:hover {
+            border-color: var(--jm-accent);
+            color: var(--jm-text-primary);
+        }
+
+        .mood-chip-sm.active {
+            background: var(--jm-accent);
+            border-color: var(--jm-accent);
+            color: white;
+        }
+
+    .auto-save-status {
+        font-size: 12px;
+        color: var(--jm-success);
+        margin-left: auto;
+    }
+
+    .editor-card {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        padding: 0;
+        overflow: hidden;
+    }
+
+    .editor-content {
+        flex: 1;
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .title-input {
+        background: transparent;
+        border: none;
+        font-size: 28px;
+        font-weight: 600;
+        color: var(--jm-accent-light);
+        outline: none;
+        margin-bottom: 16px;
+    }
+
+        .title-input::placeholder {
+            color: var(--jm-text-muted);
+        }
+
+    /* Quill Editor Styles */
+    .quill-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 400px;
+    }
+
+    ::deep .ql-container {
+        flex: 1;
+        font-size: 16px;
+        line-height: 1.8;
+        border: none !important;
+    }
+
+    ::deep .ql-editor {
+        color: var(--jm-text-primary);
+        padding: 0;
+        min-height: 300px;
+    }
+
+        ::deep .ql-editor.ql-blank::before {
+            color: var(--jm-text-muted);
+            font-style: normal;
+        }
+
+    ::deep .ql-toolbar {
+        border: none !important;
+        border-bottom: 1px solid var(--jm-border) !important;
+        background: var(--jm-surface);
+        padding: 12px 8px;
+        margin: -24px -24px 16px -24px;
+    }
+
+        ::deep .ql-toolbar button {
+            color: var(--jm-text-secondary);
+        }
+
+            ::deep .ql-toolbar button:hover,
+            ::deep .ql-toolbar button.ql-active {
+                color: var(--jm-accent);
+            }
+
+    ::deep .ql-stroke {
+        stroke: var(--jm-text-secondary);
+    }
+
+    ::deep .ql-toolbar button:hover .ql-stroke,
+    ::deep .ql-toolbar button.ql-active .ql-stroke {
+        stroke: var(--jm-accent);
+    }
+
+    ::deep .ql-fill {
+        fill: var(--jm-text-secondary);
+    }
+
+    ::deep .ql-toolbar button:hover .ql-fill,
+    ::deep .ql-toolbar button.ql-active .ql-fill {
+        fill: var(--jm-accent);
+    }
+
+    .editor-footer {
+        display: flex;
+        justify-content: space-between;
+        padding: 12px 24px;
+        border-top: 1px solid var(--jm-border);
+        font-size: 11px;
+        color: var(--jm-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .right-sidebar {
+        padding: 20px;
+        border-left: 1px solid var(--jm-border);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+        .right-sidebar .glass-card {
+            padding: 16px;
+            border-radius: var(--jm-radius-md);
+        }
+
+    .section-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+
+    .section-icon {
+        font-size: 14px;
+    }
+
+    .section-title {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 1px;
+        color: var(--jm-accent-light);
+    }
+
+    .tags-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 12px;
+        min-height: 24px;
+    }
+
+    .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        background: rgba(147, 51, 234, 0.15);
+        border-radius: var(--jm-radius-full);
+        font-size: 12px;
+        color: var(--jm-accent-light);
+    }
+
+    .tag-remove {
+        background: none;
+        border: none;
+        color: inherit;
+        cursor: pointer;
+        font-size: 14px;
+        padding: 0;
+    }
+
+    .add-tag-row {
+        display: flex;
+        gap: 8px;
+    }
+
+    .tag-input {
+        flex: 1;
+        padding: 8px 12px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-sm);
+        color: var(--jm-text-primary);
+        font-size: 13px;
+        outline: none;
+    }
+
+    .add-tag-btn {
+        width: 32px;
+        height: 32px;
+        background: var(--jm-accent);
+        border: none;
+        border-radius: var(--jm-radius-sm);
+        color: white;
+        font-size: 18px;
+        cursor: pointer;
+    }
+
+    .category-select {
+        width: 100%;
+        padding: 10px 12px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-sm);
+        color: var(--jm-text-primary);
+        font-size: 13px;
+        outline: none;
+        cursor: pointer;
+    }
+
+    .ai-section {
+        text-align: center;
+        padding: 24px 16px;
+    }
+
+    .ai-icon {
+        font-size: 32px;
+        display: block;
+        margin-bottom: 8px;
+    }
+
+    .ai-section p {
+        font-size: 13px;
+        color: var(--jm-text-muted);
+        margin: 0;
+    }
+
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-card {
+        width: 90%;
+        max-width: 400px;
+        padding: 24px;
+        text-align: center;
+    }
+
+        .modal-card h3 {
+            color: var(--jm-text-primary);
+            margin: 0 0 12px 0;
+        }
+
+        .modal-card p {
+            color: var(--jm-text-secondary);
+            margin: 0 0 24px 0;
+        }
+
+    .modal-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+    }
+
+    .btn-cancel {
+        padding: 10px 24px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-md);
+        color: var(--jm-text-secondary);
+        cursor: pointer;
+    }
+
+    .btn-delete {
+        padding: 10px 24px;
+        background: var(--jm-error);
+        border: none;
+        border-radius: var(--jm-radius-md);
+        color: white;
+        cursor: pointer;
+    }
+
+    @@media (max-width: 1024px) {
+        .diary-content {
+            grid-template-columns: 1fr;
+        }
+
+        .left-sidebar,
+        .right-sidebar {
+            display: none;
+        }
+    }
+</style>
+
+
+@code {
+    [Parameter] public string? DateParam { get; set; }
+
+    private DateTime ActiveDate = DateTime.Today;
+    private DateTime _calendarMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime _firstDayOfMonth => new DateTime(_calendarMonth.Year, _calendarMonth.Month, 1);
+    private int _daysInMonth => DateTime.DaysInMonth(_calendarMonth.Year, _calendarMonth.Month);
+
+    private string EntryTitle = "";
+    private string JournalContent = "";
+    private string SelectedPrimaryMood = "";
+    private string SelectedSecondaryMood1 = "";
+    private string SelectedSecondaryMood2 = "";
+    private string SelectedCategory = "";
+    private List<string> SelectedTags = new();
+    private int? LoadedEntryId = null;
+    private DateTime? RecordCreationTime = null;
+
+    private string _newTagInput = "";
+    private int _wordCount = 0;
+    private int _readTime = 0;
+    private bool _isSaving = false;
+    private string _statusMessage = "";
+    private bool _showDeleteConfirm = false;
+    private bool _showDatePicker = false;
+    private int _promptIndex = 0;
+    private bool _quillInitialized = false;
+
+    private readonly string[] _quickMoods = { "Radiant", "Calm", "Reflective", "Tired" };
+    private readonly string[] _dailyPrompts = {
+"What is one small thing that brought you joy today, and why did it stand out?",
+"Describe a moment today when you felt truly present.",
+"What are you grateful for right now?",
+"What challenge did you face today and how did you handle it?",
+"What would make tomorrow even better than today?"
+};
+
+    protected override async Task OnInitializedAsync()
+    {
+        AppState.OnChange += StateHasChanged;
+        AppState.OnDataChanged += HandleDataChanged;
+
+        if (!string.IsNullOrEmpty(DateParam) && DateTime.TryParse(DateParam, out var parsedDate))
+        {
+            ActiveDate = parsedDate;
+        }
+
+        await LoadEntryForDate();
+
+        // Apply global mood if set (e.g. from Dashboard)
+        if (!string.IsNullOrEmpty(AppState.GlobalMood))
+        {
+            SelectedPrimaryMood = AppState.GlobalMood;
+            // Clear it so it doesn't persist if we navigate away and back without selecting
+            AppState.SetGlobalMood("");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("QuillEditor.init", "quill-editor");
+                _quillInitialized = true;
+
+                // Load content after Quill is initialized
+                if (!string.IsNullOrEmpty(JournalContent))
+                {
+                    await JS.InvokeVoidAsync("QuillEditor.setContent", "quill-editor", JournalContent);
+                }
+
+                await UpdateWordCountFromQuill();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error initializing Quill: {ex.Message}");
+            }
+        }
+    }
+
+    private async void HandleDataChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadEntryForDate();
+            StateHasChanged();
+        });
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(DateParam) && DateTime.TryParse(DateParam, out var parsedDate))
+        {
+            if (parsedDate != ActiveDate)
+            {
+                ActiveDate = parsedDate;
+                await LoadEntryForDate();
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+        AppState.OnDataChanged -= HandleDataChanged;
+
+        if (_quillInitialized)
+        {
+            try
+            {
+                JS.InvokeVoidAsync("QuillEditor.destroy", "quill-editor");
+            }
+            catch { }
+        }
+    }
+
+    private async Task LoadEntryForDate()
+    {
+        var entry = await Db.GetByDateAsync(ActiveDate);
+        if (entry != null)
+        {
+            EntryTitle = entry.Title;
+            JournalContent = entry.Content;
+            SelectedPrimaryMood = entry.PrimaryMood;
+            SelectedSecondaryMood1 = entry.SecondaryMood1;
+            SelectedSecondaryMood2 = entry.SecondaryMood2;
+            SelectedCategory = entry.Category;
+            SelectedTags = entry.GetTagsList();
+            LoadedEntryId = entry.Id;
+            RecordCreationTime = entry.UpdatedAt;
+
+            // Update Quill content if initialized
+            if (_quillInitialized)
+            {
+                await JS.InvokeVoidAsync("QuillEditor.setContent", "quill-editor", JournalContent);
+                await UpdateWordCountFromQuill();
+            }
+        }
+        else
+        {
+            await ResetForm();
+        }
+    }
+
+    private async Task ResetForm()
+    {
+        EntryTitle = "";
+        JournalContent = "";
+        SelectedPrimaryMood = "";
+        SelectedSecondaryMood1 = "";
+        SelectedSecondaryMood2 = "";
+        SelectedCategory = "";
+        SelectedTags = new();
+        LoadedEntryId = null;
+        RecordCreationTime = null;
+
+        if (_quillInitialized)
+        {
+            await JS.InvokeVoidAsync("QuillEditor.setContent", "quill-editor", "");
+            await UpdateWordCountFromQuill();
+        }
+    }
+
+    private async Task UpdateWordCountFromQuill()
+    {
+        if (!_quillInitialized) return;
+
+        try
+        {
+            var text = await JS.InvokeAsync<string>("QuillEditor.getText", "quill-editor");
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                _wordCount = 0;
+                _readTime = 0;
+            }
+            else
+            {
+                _wordCount = text.Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries).Length;
+                _readTime = Math.Max(1, _wordCount / 200);
+            }
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private void SelectPrimaryMood(string mood)
+    {
+        SelectedPrimaryMood = mood;
+    }
+
+    private async Task SaveEntry()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedPrimaryMood))
+        {
+            SelectedPrimaryMood = "Calm";
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            // Get content from Quill editor
+            if (_quillInitialized)
+            {
+                JournalContent = await JS.InvokeAsync<string>("QuillEditor.getContent", "quill-editor");
+            }
+
+            var entry = new JournalEntry
+            {
+                DateKey = ActiveDate.ToString("yyyy-MM-dd"),
+                Title = string.IsNullOrWhiteSpace(EntryTitle) ? $"Entry for {ActiveDate:MMM d, yyyy}" : EntryTitle,
+                Content = JournalContent,
+                PrimaryMood = SelectedPrimaryMood,
+                SecondaryMood1 = SelectedSecondaryMood1,
+                SecondaryMood2 = SelectedSecondaryMood2,
+                Category = SelectedCategory,
+                Tags = string.Join(",", SelectedTags)
+            };
+
+            await Db.SaveAsync(entry);
+            _statusMessage = "✓ All changes saved";
+            RecordCreationTime = DateTime.Now;
+
+            await UpdateWordCountFromQuill();
+
+            await Task.Delay(2000);
+            _statusMessage = "";
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void AddTag()
+    {
+        if (!string.IsNullOrWhiteSpace(_newTagInput) && !SelectedTags.Contains(_newTagInput))
+        {
+            SelectedTags.Add(_newTagInput.Trim());
+            _newTagInput = "";
+        }
+    }
+
+    private void RemoveTag(string tag)
+    {
+        SelectedTags.Remove(tag);
+    }
+
+    private void HandleTagKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            AddTag();
+        }
+    }
+
+    private void SelectCalendarDay(int day)
+    {
+        ActiveDate = new DateTime(_calendarMonth.Year, _calendarMonth.Month, day);
+        _ = LoadEntryForDate();
+    }
+
+    private void PreviousMonth()
+    {
+        _calendarMonth = _calendarMonth.AddMonths(-1);
+    }
+
+    private void NextMonth()
+    {
+        if (_calendarMonth < new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1))
+        {
+            _calendarMonth = _calendarMonth.AddMonths(1);
+        }
+    }
+
+    private string GetDailyPrompt()
+    {
+        return _dailyPrompts[_promptIndex % _dailyPrompts.Length];
+    }
+
+    private void RefreshPrompt()
+    {
+        _promptIndex = (_promptIndex + 1) % _dailyPrompts.Length;
+    }
+
+    private void ShowDeleteConfirmation() => _showDeleteConfirm = true;
+    private void HideDeleteConfirm() => _showDeleteConfirm = false;
+
+    private async Task DeleteEntry()
+    {
+        if (LoadedEntryId.HasValue)
+        {
+            await Db.DeleteByIdAsync(LoadedEntryId.Value);
+        }
+        else
+        {
+            await Db.DeleteAsync(ActiveDate);
+        }
+        _showDeleteConfirm = false;
+        await ResetForm();
+    }
+}

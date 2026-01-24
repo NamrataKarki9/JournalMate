@@ -1,0 +1,259 @@
+﻿@inject JournalMate.Services.AppCurrentState CurrentAppState
+@inject NavigationManager NavManager
+
+@implements IDisposable
+
+<div class="sidebar-container">
+    <!-- Brand Header -->
+    <div class="brand-section">
+        <div class="brand-logo">
+            <div class="logo-image" style="background-image: url('@CurrentAppState.ProfilePictureDisplayPath')"></div>
+            <div class="logo-text">
+                <span class="app-name">JournalMate</span>
+                <span class="user-name">@CurrentAppState.UserDisplayName</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation Links -->
+    <nav class="nav-section">
+        @if (!CurrentAppState.IsLoggedIn)
+        {
+            <NavLink class="nav-item" href="login" Match="NavLinkMatch.All">
+                <span class="nav-icon">🔐</span>
+                <span class="nav-label">Login</span>
+            </NavLink>
+        }
+        else
+        {
+            <NavLink class="nav-item" href="dashboard" Match="NavLinkMatch.All">
+                <span class="nav-icon">📊</span>
+                <span class="nav-label">Dashboard</span>
+            </NavLink>
+
+            <NavLink class="nav-item" href="diary">
+                <span class="nav-icon">📝</span>
+                <span class="nav-label">My Journal</span>
+            </NavLink>
+
+            <NavLink class="nav-item" href="calendar">
+                <span class="nav-icon">📅</span>
+                <span class="nav-label">Calendar</span>
+            </NavLink>
+
+            <NavLink class="nav-item" href="viewdiary">
+                <span class="nav-icon">📚</span>
+                <span class="nav-label">All Entries</span>
+            </NavLink>
+
+            <NavLink class="nav-item" href="settings">
+                <span class="nav-icon">⚙️</span>
+                <span class="nav-label">Settings</span>
+            </NavLink>
+        }
+    </nav>
+
+    <!-- Footer Section -->
+    @if (CurrentAppState.IsLoggedIn)
+    {
+        <div class="footer-section">
+            <!-- New Entry Button -->
+            <button class="new-entry-btn" @onclick="GoToNewEntry">
+                <span class="btn-icon">+</span>
+                <span>New Entry</span>
+            </button>
+
+            <!-- Logout -->
+            <button class="logout-btn" @onclick="PerformLogout">
+                <span class="nav-icon">🚪</span>
+                <span>Logout</span>
+            </button>
+        </div>
+    }
+</div>
+
+<style>
+    .sidebar-container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        padding: 20px 16px;
+        background: var(--jm-surface-solid);
+    }
+
+    /* Brand Section */
+    .brand-section {
+        padding-bottom: 24px;
+        border-bottom: 1px solid var(--jm-border);
+        margin-bottom: 20px;
+    }
+
+    .brand-logo {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .logo-icon {
+        font-size: 32px;
+        background: linear-gradient(135deg, var(--jm-accent) 0%, var(--jm-accent-dark) 100%);
+        padding: 8px;
+        border-radius: var(--jm-radius-md);
+    }
+
+    .logo-image {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background-size: cover;
+        background-position: center;
+        border: 2px solid var(--jm-accent);
+    }
+
+    .logo-text {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .app-name {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--jm-text-primary);
+    }
+
+    .user-name {
+        font-size: 12px;
+        color: var(--jm-accent-light);
+    }
+
+    /* Navigation Section */
+    .nav-section {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 14px;
+        border-radius: var(--jm-radius-md);
+        color: var(--jm-text-secondary);
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all var(--jm-transition-fast);
+        outline: none;
+    }
+
+    .nav-item:focus,
+    .nav-item:active,
+    .nav-item:focus-visible {
+        outline: none !important;
+        box-shadow: none !important;
+    }
+
+    .nav-item:hover {
+        background: var(--jm-surface-hover);
+        color: var(--jm-text-primary);
+    }
+
+    .nav-item.active {
+        background: rgba(147, 51, 234, 0.15);
+        color: var(--jm-accent-light);
+        border: 1px solid rgba(147, 51, 234, 0.3);
+    }
+
+    .nav-icon {
+        font-size: 18px;
+        width: 24px;
+        text-align: center;
+    }
+
+    .nav-label {
+        flex: 1;
+    }
+
+    /* Footer Section */
+    .footer-section {
+        padding-top: 16px;
+        border-top: 1px solid var(--jm-border);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .new-entry-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        padding: 14px 20px;
+        background: linear-gradient(135deg, var(--jm-accent) 0%, var(--jm-accent-dark) 100%);
+        color: white;
+        border: none;
+        border-radius: var(--jm-radius-md);
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all var(--jm-transition-normal);
+        box-shadow: var(--jm-shadow-sm), var(--jm-shadow-glow);
+    }
+
+    .new-entry-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--jm-shadow-md), 0 0 30px var(--jm-accent-glow);
+    }
+
+    .btn-icon {
+        font-size: 18px;
+        font-weight: 700;
+    }
+
+    .logout-btn {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 14px;
+        background: transparent;
+        border: none;
+        border-radius: var(--jm-radius-md);
+        color: var(--jm-text-muted);
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+        width: 100%;
+    }
+
+    .logout-btn:hover {
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--jm-error);
+    }
+</style>
+
+@code {
+    protected override void OnInitialized()
+    {
+        CurrentAppState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        CurrentAppState.OnChange -= StateHasChanged;
+    }
+
+    private void GoToNewEntry()
+    {
+        NavManager.NavigateTo("/diary");
+    }
+
+    private void PerformLogout()
+    {
+        CurrentAppState.RevokeAuthentication();
+        NavManager.NavigateTo("/login", replace: true);
+    }
+}

@@ -1,5 +1,0 @@
-<Solution>
-  <Project Path="JournalMate/JournalMate.csproj">
-    <Deploy Solution="Debug|*" />
-  </Project>
-</Solution>

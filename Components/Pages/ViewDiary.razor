@@ -1,0 +1,614 @@
+﻿@page "/viewdiary"
+@using JournalMaui.Services
+@using JournalMaui.Models
+@inject JournalDatabase Db
+@inject NavigationManager NavigationManager
+@inject JournalMate.Services.AppCurrentState AppState
+@implements IDisposable
+
+<div class="viewdiary-page">
+    <header class="page-header">
+        <div class="header-left">
+            <h1 class="page-title">📚 Journal Entries</h1>
+            <p class="page-subtitle">Your complete journaling history</p>
+        </div>
+        <div class="header-right">
+            <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="search" class="search-input" placeholder="Search by title or content..."
+                    value="@_searchQuery" @oninput="UpdateSearch" />
+            </div>
+            <select class="filter-select" @bind="_moodFilter" @bind:event="onchange" @bind:after="ApplyFilters">
+                <option value="">All Moods</option>
+                <option value="Positive">😊 Positive</option>
+                <option value="Neutral">😐 Neutral</option>
+                <option value="Negative">😔 Negative</option>
+            </select>
+        </div>
+    </header>
+
+    <div class="table-container glass-card">
+        @if (_isLoading)
+        {
+            <div class="loading-state">
+                <div class="spinner"></div>
+                <p>Loading entries...</p>
+            </div>
+        }
+        else if (_filteredEntries.Count == 0)
+        {
+            <div class="empty-state">
+                <div class="empty-icon">📝</div>
+                <h3>No entries found</h3>
+                <p>@(_hasFilters ? "Try adjusting your filters" : "Start writing your first journal entry!")</p>
+                @if (!_hasFilters)
+                {
+                    <button class="start-btn" @onclick='() => NavigationManager.NavigateTo("/diary")'>
+                        ✍️ Write Entry
+                    </button>
+                }
+            </div>
+        }
+        else
+        {
+            <table class="entries-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Title</th>
+                        <th>Mood</th>
+                        <th>Words</th>
+                        <th>Tags</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var entry in _paginatedEntries)
+                    {
+                        <tr class="table-row" @onclick="() => NavigateToEntry(entry.DateKey)">
+                            <td class="date-cell">
+                                @{
+                                    DateTime.TryParse(entry.DateKey, out var entryDate);
+                                }
+                                @entryDate.ToString("MMM dd, yyyy")
+                            </td>
+                            <td class="title-cell">
+                                @entry.Title
+                            </td>
+                            <td class="mood-cell">
+                                @if (!string.IsNullOrEmpty(entry.PrimaryMood))
+                                {
+                                    <span class="mood-badge"
+                                        style="background-color: @(MoodData.GetCategoryColor(entry.MoodCategory) + "20"); color: @MoodData.GetCategoryColor(entry.MoodCategory)">
+                                        @MoodData.GetMoodEmoji(entry.PrimaryMood) @entry.PrimaryMood
+                                    </span>
+                                }
+                            </td>
+                            <td class="words-cell">
+                                @entry.WordCount
+                            </td>
+                            <td class="tags-cell">
+                                @{
+                                    var tags = entry.GetTagsList().Take(2).ToList();
+                                    var moreCount = entry.GetTagsList().Count - 2;
+                                }
+                                @foreach (var tag in tags)
+                                {
+                                    <span class="tag-mini">@tag</span>
+                                }
+                                @if (moreCount > 0)
+                                {
+                                    <span class="tag-more">+@moreCount</span>
+                                }
+                            </td>
+                            <td class="actions-cell" @onclick:stopPropagation="true">
+                                <button class="action-icon-btn edit" @onclick="() => NavigateToEntry(entry.DateKey)"
+                                    title="Edit">
+                                    ✏️
+                                </button>
+                                <button class="action-icon-btn delete" @onclick="() => ConfirmDelete(entry.Id)" title="Delete">
+                                    🗑️
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <div class="pagination">
+                <span class="page-info">
+                    Showing @((_currentPage - 1) * _pageSize + 1)-@Math.Min(_currentPage * _pageSize,
+                                    _filteredEntries.Count) of @_filteredEntries.Count entries
+            </span>
+            <div class="page-buttons">
+                <button class="page-btn" @onclick="FirstPage" disabled="@(_currentPage == 1)">⟪</button>
+                <button class="page-btn" @onclick="PreviousPage" disabled="@(_currentPage == 1)">◀</button>
+                <span class="current-page">@_currentPage / @_totalPages</span>
+                <button class="page-btn" @onclick="NextPage" disabled="@(_currentPage >= _totalPages)">▶</button>
+                <button class="page-btn" @onclick="LastPage" disabled="@(_currentPage >= _totalPages)">⟫</button>
+            </div>
+        </div>
+                }
+    </div>
+</div>
+
+@if (_showDeleteConfirm)
+{
+    <div class="modal-overlay" @onclick="() => _showDeleteConfirm = false">
+        <div class="modal-dialog glass-card" @onclick:stopPropagation="true">
+            <h3>Delete Entry?</h3>
+            <p>Are you sure you want to delete this entry? This cannot be undone.</p>
+            <div class="modal-actions">
+                <button class="btn-cancel" @onclick="() => _showDeleteConfirm = false">Cancel</button>
+                <button class="btn-delete" @onclick="DeleteEntry">Delete</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .viewdiary-page {
+        min-height: 100vh;
+        padding: 32px 40px;
+        background: var(--jm-bg-primary);
+    }
+
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+
+    .page-title {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--jm-text-primary);
+        margin: 0;
+    }
+
+    .page-subtitle {
+        font-size: 14px;
+        color: var(--jm-text-muted);
+        margin: 4px 0 0 0;
+    }
+
+    .header-right {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .search-box {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-md);
+        min-width: 280px;
+    }
+
+    .search-input {
+        background: transparent;
+        border: none;
+        color: var(--jm-text-primary);
+        font-size: 14px;
+        outline: none;
+        flex: 1;
+    }
+
+    .search-input::placeholder {
+        color: var(--jm-text-muted);
+    }
+
+    .filter-select {
+        padding: 12px 16px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-md);
+        color: var(--jm-text-primary);
+        font-size: 14px;
+        cursor: pointer;
+        outline: none;
+    }
+
+    .table-container {
+        padding: 0;
+        overflow: hidden;
+    }
+
+    .entries-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .entries-table thead {
+        background: var(--jm-surface);
+    }
+
+    .entries-table th {
+        text-align: left;
+        padding: 16px 20px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--jm-text-muted);
+        border-bottom: 1px solid var(--jm-border);
+    }
+
+    .table-row {
+        cursor: pointer;
+        border-bottom: 1px solid var(--jm-border-light);
+        transition: background var(--jm-transition-fast);
+    }
+
+    .table-row:hover {
+        background: var(--jm-surface);
+    }
+
+    .entries-table td {
+        padding: 16px 20px;
+        font-size: 14px;
+    }
+
+    .date-cell {
+        color: var(--jm-text-secondary);
+        font-weight: 500;
+        white-space: nowrap;
+    }
+
+    .title-cell {
+        color: var(--jm-text-primary);
+        font-weight: 600;
+    }
+
+    .mood-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        border-radius: var(--jm-radius-full);
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .words-cell {
+        color: var(--jm-text-muted);
+    }
+
+    .tag-mini {
+        display: inline-block;
+        padding: 3px 8px;
+        background: var(--jm-surface);
+        border-radius: var(--jm-radius-full);
+        font-size: 11px;
+        color: var(--jm-text-secondary);
+        margin-right: 4px;
+    }
+
+    .tag-more {
+        font-size: 11px;
+        color: var(--jm-text-muted);
+    }
+
+    .actions-cell {
+        display: flex;
+        gap: 8px;
+    }
+
+    .action-icon-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: var(--jm-radius-sm);
+        border: 1px solid var(--jm-border);
+        background: transparent;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all var(--jm-transition-fast);
+    }
+
+    .action-icon-btn:hover {
+        background: var(--jm-surface-hover);
+    }
+
+    .action-icon-btn.delete:hover {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: var(--jm-error);
+    }
+
+    .pagination {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        border-top: 1px solid var(--jm-border);
+    }
+
+    .page-info {
+        font-size: 13px;
+        color: var(--jm-text-muted);
+    }
+
+    .page-buttons {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .page-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: var(--jm-radius-sm);
+        border: 1px solid var(--jm-border);
+        background: var(--jm-surface);
+        color: var(--jm-text-secondary);
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+    }
+
+    .page-btn:hover:not(:disabled) {
+        background: var(--jm-accent);
+        border-color: var(--jm-accent);
+        color: white;
+    }
+
+    .page-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    .current-page {
+        font-size: 13px;
+        color: var(--jm-text-primary);
+        padding: 0 8px;
+    }
+
+    .loading-state,
+    .empty-state {
+        padding: 60px 20px;
+        text-align: center;
+        color: var(--jm-text-muted);
+    }
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid var(--jm-border);
+        border-top-color: var(--jm-accent);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 16px;
+    }
+
+    @@keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .empty-icon {
+        font-size: 56px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+    }
+
+    .empty-state h3 {
+        color: var(--jm-text-primary);
+        margin: 0 0 8px 0;
+    }
+
+    .start-btn {
+        margin-top: 16px;
+        background: var(--jm-accent);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: var(--jm-radius-md);
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-dialog {
+        max-width: 400px;
+        padding: 24px;
+        text-align: center;
+    }
+
+    .modal-dialog h3 {
+        color: var(--jm-text-primary);
+        margin: 0 0 12px 0;
+    }
+
+    .modal-dialog p {
+        color: var(--jm-text-secondary);
+        margin: 0 0 24px 0;
+    }
+
+    .modal-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+    }
+
+    .btn-cancel {
+        padding: 10px 24px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-md);
+        color: var(--jm-text-secondary);
+        cursor: pointer;
+    }
+
+    .btn-delete {
+        padding: 10px 24px;
+        background: var(--jm-error);
+        border: none;
+        border-radius: var(--jm-radius-md);
+        color: white;
+        cursor: pointer;
+    }
+
+    @@media (max-width: 768px) {
+        .viewdiary-page {
+            padding: 20px;
+        }
+
+        .page-header {
+            flex-direction: column;
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        .entries-table td,
+        .entries-table th {
+            padding: 12px 16px;
+        }
+    }
+</style>
+
+@code {
+    private List<JournalEntry> _allEntries = new();
+    private List<JournalEntry> _filteredEntries = new();
+    private List<JournalEntry> _paginatedEntries = new();
+
+    private bool _isLoading = true;
+    private string _searchQuery = "";
+    private string _moodFilter = "";
+    private int _pageSize = 10;
+    private int _currentPage = 1;
+    private int _totalPages => (int)Math.Ceiling(_filteredEntries.Count / (double)_pageSize);
+    private bool _hasFilters => !string.IsNullOrWhiteSpace(_searchQuery) || !string.IsNullOrWhiteSpace(_moodFilter);
+
+    private bool _showDeleteConfirm = false;
+    private int _deleteTargetId = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AppState.OnChange += StateHasChanged;
+        AppState.OnDataChanged += HandleDataChanged;
+        await LoadEntries();
+    }
+
+    private async void HandleDataChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadEntries();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+        AppState.OnDataChanged -= HandleDataChanged;
+    }
+
+    private async Task LoadEntries()
+    {
+        Console.WriteLine("[ViewDiary] Loading entries...");
+        _isLoading = true;
+        try
+        {
+            _allEntries = await Db.GetAllEntriesAsync();
+            Console.WriteLine($"[ViewDiary] Loaded {_allEntries.Count} entries");
+            ApplyFilters();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void UpdateSearch(ChangeEventArgs e)
+    {
+        _searchQuery = e.Value?.ToString() ?? "";
+        _currentPage = 1;
+        ApplyFilters();
+    }
+
+    private void ApplyFilters()
+    {
+        var filtered = _allEntries.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            var query = _searchQuery.ToLower();
+            filtered = filtered.Where(e =>
+            e.Title.ToLower().Contains(query) ||
+            e.Content.ToLower().Contains(query));
+        }
+
+        if (!string.IsNullOrWhiteSpace(_moodFilter))
+        {
+            filtered = filtered.Where(e => e.MoodCategory == _moodFilter);
+        }
+
+        _filteredEntries = filtered.ToList();
+        Console.WriteLine($"[ViewDiary] Filtered entries count: {_filteredEntries.Count}");
+        foreach (var entry in _filteredEntries.Take(5))
+        {
+            Console.WriteLine($"[ViewDiary] Entry: ID={entry.Id}, Date={entry.DateKey}, Title={entry.Title}");
+        }
+        _currentPage = 1;
+        UpdatePagination();
+    }
+
+    private void UpdatePagination()
+    {
+        _paginatedEntries = _filteredEntries
+        .Skip((_currentPage - 1) * _pageSize)
+        .Take(_pageSize)
+        .ToList();
+    }
+
+    private void GoToPage(int page)
+    {
+        _currentPage = page;
+        UpdatePagination();
+    }
+
+    private void FirstPage() => GoToPage(1);
+    private void LastPage() => GoToPage(_totalPages);
+    private void PreviousPage() { if (_currentPage > 1) GoToPage(_currentPage - 1); }
+    private void NextPage() { if (_currentPage < _totalPages) GoToPage(_currentPage + 1); }
+
+    private void NavigateToEntry(string dateKey)
+    {
+        NavigationManager.NavigateTo($"/diary/{dateKey}");
+    }
+
+    private void ConfirmDelete(int id)
+    {
+        _deleteTargetId = id;
+        _showDeleteConfirm = true;
+    }
+
+    private async Task DeleteEntry()
+    {
+        Console.WriteLine($"[ViewDiary] Deleting entry with ID: {_deleteTargetId}");
+        if (_deleteTargetId > 0)
+        {
+            await Db.DeleteByIdAsync(_deleteTargetId);
+        }
+        _showDeleteConfirm = false;
+        await LoadEntries();
+    }
+}
