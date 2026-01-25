@@ -16,7 +16,7 @@
             <div class="search-box">
                 <span class="search-icon">🔍</span>
                 <input type="search" class="search-input" placeholder="Search by title or content..."
-                    value="@_searchQuery" @oninput="UpdateSearch" />
+                       value="@_searchQuery" @oninput="UpdateSearch" />
             </div>
             <select class="filter-select" @bind="_moodFilter" @bind:event="onchange" @bind:after="ApplyFilters">
                 <option value="">All Moods</option>
@@ -24,8 +24,55 @@
                 <option value="Neutral">😐 Neutral</option>
                 <option value="Negative">😔 Negative</option>
             </select>
+            <button class="filter-btn @(_showTagFilter ? "active" : "")" @onclick="ToggleTagFilter">
+                🏷️ Tags @if (_selectedTags.Any()) {
+                <span class="filter-badge">@_selectedTags.Count</span>
+                                }
+            </button>
         </div>
     </header>
+
+    @if (_showTagFilter)
+    {
+        <div class="tag-filter-panel glass-card">
+            <div class="filter-header">
+                <h3>Filter by Tags</h3>
+                <button class="clear-btn" @onclick="ClearTagFilters" disabled="@(!_selectedTags.Any())">
+                    Clear All
+                </button>
+            </div>
+
+            @if (_selectedTags.Any())
+            {
+                <div class="selected-tags">
+                    <span class="filter-label">Active Filters:</span>
+                    @foreach (var tag in _selectedTags)
+                    {
+                        <span class="filter-tag">
+                            #@tag
+                            <button class="remove-filter" @onclick="() => RemoveTagFilter(tag)">×</button>
+                        </span>
+                    }
+                </div>
+            }
+
+            <div class="available-tags">
+                <span class="filter-label">Available Tags:</span>
+                <div class="tag-cloud">
+                    @foreach (var tagPair in _availableTags.OrderByDescending(t => t.Value).Take(20))
+                    {
+                        var isSelected = _selectedTags.Contains(tagPair.Key);
+                        <button class="cloud-tag @(isSelected ? "selected" : "")"
+                                style="background-color: @TagData.GetTagColor(tagPair.Key);"
+                                @onclick="() => ToggleTagFilter(tagPair.Key)">
+                            #@tagPair.Key
+                            <span class="tag-count">@tagPair.Value</span>
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    }
 
     <div class="table-container glass-card">
         @if (_isLoading)
@@ -79,7 +126,7 @@
                                 @if (!string.IsNullOrEmpty(entry.PrimaryMood))
                                 {
                                     <span class="mood-badge"
-                                        style="background-color: @(MoodData.GetCategoryColor(entry.MoodCategory) + "20"); color: @MoodData.GetCategoryColor(entry.MoodCategory)">
+                                          style="background-color: @(MoodData.GetCategoryColor(entry.MoodCategory) + "20"); color: @MoodData.GetCategoryColor(entry.MoodCategory)">
                                         @MoodData.GetMoodEmoji(entry.PrimaryMood) @entry.PrimaryMood
                                     </span>
                                 }
@@ -89,12 +136,17 @@
                             </td>
                             <td class="tags-cell">
                                 @{
-                                    var tags = entry.GetTagsList().Take(2).ToList();
-                                    var moreCount = entry.GetTagsList().Count - 2;
+                                    var tags = entry.GetTagsList();
+                                    var displayTags = tags.Take(2).ToList();
+                                    var moreCount = tags.Count - 2;
                                 }
-                                @foreach (var tag in tags)
+                                @foreach (var tag in displayTags)
                                 {
-                                    <span class="tag-mini">@tag</span>
+                                    var isFiltered = _selectedTags.Contains(tag);
+                                    <span class="tag-mini @(isFiltered ? "highlighted" : "")"
+                                          style="@(isFiltered ? $"background-color: {TagData.GetTagColor(tag)}30; color: {TagData.GetTagColor(tag)}; border: 1px solid {TagData.GetTagColor(tag)};" : "")">
+                                        @tag
+                                    </span>
                                 }
                                 @if (moreCount > 0)
                                 {
@@ -103,7 +155,7 @@
                             </td>
                             <td class="actions-cell" @onclick:stopPropagation="true">
                                 <button class="action-icon-btn edit" @onclick="() => NavigateToEntry(entry.DateKey)"
-                                    title="Edit">
+                                        title="Edit">
                                     ✏️
                                 </button>
                                 <button class="action-icon-btn delete" @onclick="() => ConfirmDelete(entry.Id)" title="Delete">
@@ -179,6 +231,7 @@
         display: flex;
         gap: 12px;
         flex-wrap: wrap;
+        align-items: center;
     }
 
     .search-box {
@@ -201,9 +254,9 @@
         flex: 1;
     }
 
-    .search-input::placeholder {
-        color: var(--jm-text-muted);
-    }
+        .search-input::placeholder {
+            color: var(--jm-text-muted);
+        }
 
     .filter-select {
         padding: 12px 16px;
@@ -214,6 +267,197 @@
         font-size: 14px;
         cursor: pointer;
         outline: none;
+        transition: all var(--jm-transition-fast);
+    }
+
+        .filter-select:hover {
+            border-color: var(--jm-accent);
+        }
+
+    /* NEW: Tag filter button */
+    .filter-btn {
+        padding: 12px 16px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-md);
+        color: var(--jm-text-primary);
+        font-size: 14px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all var(--jm-transition-fast);
+        position: relative;
+    }
+
+        .filter-btn:hover {
+            border-color: var(--jm-accent);
+            background: var(--jm-surface-hover);
+        }
+
+        .filter-btn.active {
+            background: rgba(147, 51, 234, 0.15);
+            border-color: var(--jm-accent);
+            color: var(--jm-accent-light);
+        }
+
+    .filter-badge {
+        background: var(--jm-accent);
+        color: white;
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: var(--jm-radius-full);
+        font-weight: 600;
+        min-width: 18px;
+        text-align: center;
+    }
+
+    /* Tag Filter Panel */
+    .tag-filter-panel {
+        margin-bottom: 20px;
+        padding: 20px;
+        animation: slideDown 0.3s ease;
+    }
+
+    @@keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .filter-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+    }
+
+        .filter-header h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--jm-text-primary);
+            margin: 0;
+        }
+
+    .clear-btn {
+        background: transparent;
+        border: 1px solid var(--jm-border);
+        color: var(--jm-text-secondary);
+        padding: 6px 12px;
+        border-radius: var(--jm-radius-sm);
+        font-size: 12px;
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+    }
+
+        .clear-btn:hover:not(:disabled) {
+            background: var(--jm-surface-hover);
+            border-color: var(--jm-accent);
+            color: var(--jm-accent);
+        }
+
+        .clear-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+    .selected-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 16px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--jm-border);
+    }
+
+    .filter-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--jm-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .filter-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        background: rgba(147, 51, 234, 0.15);
+        border: 1px solid var(--jm-accent);
+        border-radius: var(--jm-radius-full);
+        font-size: 13px;
+        color: var(--jm-accent-light);
+        font-weight: 500;
+    }
+
+    .remove-filter {
+        background: none;
+        border: none;
+        color: inherit;
+        cursor: pointer;
+        font-size: 16px;
+        padding: 0;
+        opacity: 0.7;
+        transition: opacity var(--jm-transition-fast);
+    }
+
+        .remove-filter:hover {
+            opacity: 1;
+        }
+
+    .available-tags {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .tag-cloud {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .cloud-tag {
+        padding: 8px 12px;
+        border: none;
+        border-radius: var(--jm-radius-md);
+        font-size: 13px;
+        color: white;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        opacity: 0.7;
+    }
+
+        .cloud-tag:hover {
+            opacity: 1;
+            transform: translateY(-2px);
+            box-shadow: var(--jm-shadow-md);
+        }
+
+        .cloud-tag.selected {
+            opacity: 1;
+            transform: scale(1.05);
+            box-shadow: var(--jm-shadow-glow);
+        }
+
+    .tag-count {
+        background: rgba(255, 255, 255, 0.3);
+        padding: 2px 6px;
+        border-radius: var(--jm-radius-full);
+        font-size: 11px;
+        font-weight: 600;
     }
 
     .table-container {
@@ -226,20 +470,20 @@
         border-collapse: collapse;
     }
 
-    .entries-table thead {
-        background: var(--jm-surface);
-    }
+        .entries-table thead {
+            background: var(--jm-surface);
+        }
 
-    .entries-table th {
-        text-align: left;
-        padding: 16px 20px;
-        font-size: 11px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: var(--jm-text-muted);
-        border-bottom: 1px solid var(--jm-border);
-    }
+        .entries-table th {
+            text-align: left;
+            padding: 16px 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--jm-text-muted);
+            border-bottom: 1px solid var(--jm-border);
+        }
 
     .table-row {
         cursor: pointer;
@@ -247,9 +491,9 @@
         transition: background var(--jm-transition-fast);
     }
 
-    .table-row:hover {
-        background: var(--jm-surface);
-    }
+        .table-row:hover {
+            background: var(--jm-surface);
+        }
 
     .entries-table td {
         padding: 16px 20px;
@@ -289,7 +533,13 @@
         font-size: 11px;
         color: var(--jm-text-secondary);
         margin-right: 4px;
+        transition: all var(--jm-transition-fast);
     }
+
+        .tag-mini.highlighted {
+            font-weight: 600;
+            transform: scale(1.05);
+        }
 
     .tag-more {
         font-size: 11px;
@@ -312,14 +562,14 @@
         transition: all var(--jm-transition-fast);
     }
 
-    .action-icon-btn:hover {
-        background: var(--jm-surface-hover);
-    }
+        .action-icon-btn:hover {
+            background: var(--jm-surface-hover);
+        }
 
-    .action-icon-btn.delete:hover {
-        background: rgba(239, 68, 68, 0.1);
-        border-color: var(--jm-error);
-    }
+        .action-icon-btn.delete:hover {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: var(--jm-error);
+        }
 
     .pagination {
         display: flex;
@@ -351,16 +601,16 @@
         transition: all var(--jm-transition-fast);
     }
 
-    .page-btn:hover:not(:disabled) {
-        background: var(--jm-accent);
-        border-color: var(--jm-accent);
-        color: white;
-    }
+        .page-btn:hover:not(:disabled) {
+            background: var(--jm-accent);
+            border-color: var(--jm-accent);
+            color: white;
+        }
 
-    .page-btn:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-    }
+        .page-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
 
     .current-page {
         font-size: 13px;
@@ -411,7 +661,12 @@
         border-radius: var(--jm-radius-md);
         font-weight: 600;
         cursor: pointer;
+        transition: all var(--jm-transition-fast);
     }
+
+        .start-btn:hover {
+            background: var(--jm-accent-dark);
+        }
 
     .modal-overlay {
         position: fixed;
@@ -429,15 +684,15 @@
         text-align: center;
     }
 
-    .modal-dialog h3 {
-        color: var(--jm-text-primary);
-        margin: 0 0 12px 0;
-    }
+        .modal-dialog h3 {
+            color: var(--jm-text-primary);
+            margin: 0 0 12px 0;
+        }
 
-    .modal-dialog p {
-        color: var(--jm-text-secondary);
-        margin: 0 0 24px 0;
-    }
+        .modal-dialog p {
+            color: var(--jm-text-secondary);
+            margin: 0 0 24px 0;
+        }
 
     .modal-actions {
         display: flex;
@@ -452,7 +707,12 @@
         border-radius: var(--jm-radius-md);
         color: var(--jm-text-secondary);
         cursor: pointer;
+        transition: all var(--jm-transition-fast);
     }
+
+        .btn-cancel:hover {
+            background: var(--jm-surface-hover);
+        }
 
     .btn-delete {
         padding: 10px 24px;
@@ -461,7 +721,12 @@
         border-radius: var(--jm-radius-md);
         color: white;
         cursor: pointer;
+        transition: all var(--jm-transition-fast);
     }
+
+        .btn-delete:hover {
+            background: #dc2626;
+        }
 
     @@media (max-width: 768px) {
         .viewdiary-page {
@@ -472,6 +737,10 @@
             flex-direction: column;
         }
 
+        .search-box {
+            min-width: 100%;
+        }
+
         .table-container {
             overflow-x: auto;
         }
@@ -480,6 +749,11 @@
         .entries-table th {
             padding: 12px 16px;
         }
+
+        .tag-cloud {
+            max-height: 200px;
+            overflow-y: auto;
+        }
     }
 </style>
 
@@ -487,14 +761,17 @@
     private List<JournalEntry> _allEntries = new();
     private List<JournalEntry> _filteredEntries = new();
     private List<JournalEntry> _paginatedEntries = new();
+    private Dictionary<string, int> _availableTags = new();
+    private List<string> _selectedTags = new();
 
     private bool _isLoading = true;
     private string _searchQuery = "";
     private string _moodFilter = "";
+    private bool _showTagFilter = false;
     private int _pageSize = 10;
     private int _currentPage = 1;
     private int _totalPages => (int)Math.Ceiling(_filteredEntries.Count / (double)_pageSize);
-    private bool _hasFilters => !string.IsNullOrWhiteSpace(_searchQuery) || !string.IsNullOrWhiteSpace(_moodFilter);
+    private bool _hasFilters => !string.IsNullOrWhiteSpace(_searchQuery) || !string.IsNullOrWhiteSpace(_moodFilter) || _selectedTags.Any();
 
     private bool _showDeleteConfirm = false;
     private int _deleteTargetId = 0;
@@ -504,6 +781,7 @@
         AppState.OnChange += StateHasChanged;
         AppState.OnDataChanged += HandleDataChanged;
         await LoadEntries();
+        await LoadAvailableTags();
     }
 
     private async void HandleDataChanged()
@@ -511,6 +789,7 @@
         await InvokeAsync(async () =>
         {
             await LoadEntries();
+            await LoadAvailableTags();
             StateHasChanged();
         });
     }
@@ -537,9 +816,54 @@
         }
     }
 
+    private async Task LoadAvailableTags()
+    {
+        try
+        {
+            _availableTags = await Db.GetTagFrequencyAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading tags: {ex.Message}");
+        }
+    }
+
     private void UpdateSearch(ChangeEventArgs e)
     {
         _searchQuery = e.Value?.ToString() ?? "";
+        _currentPage = 1;
+        ApplyFilters();
+    }
+
+    private void ToggleTagFilter()
+    {
+        _showTagFilter = !_showTagFilter;
+    }
+
+    private void ToggleTagFilter(string tag)
+    {
+        if (_selectedTags.Contains(tag))
+        {
+            _selectedTags.Remove(tag);
+        }
+        else
+        {
+            _selectedTags.Add(tag);
+        }
+        _currentPage = 1;
+        ApplyFilters();
+    }
+
+    private void RemoveTagFilter(string tag)
+    {
+        _selectedTags.Remove(tag);
+        _currentPage = 1;
+        ApplyFilters();
+    }
+
+    private void ClearTagFilters()
+    {
+        _selectedTags.Clear();
         _currentPage = 1;
         ApplyFilters();
     }
@@ -548,25 +872,33 @@
     {
         var filtered = _allEntries.AsEnumerable();
 
+        // Search filter
         if (!string.IsNullOrWhiteSpace(_searchQuery))
         {
             var query = _searchQuery.ToLower();
             filtered = filtered.Where(e =>
-            e.Title.ToLower().Contains(query) ||
-            e.Content.ToLower().Contains(query));
+                e.Title.ToLower().Contains(query) ||
+                e.Content.ToLower().Contains(query));
         }
 
+        // Mood filter
         if (!string.IsNullOrWhiteSpace(_moodFilter))
         {
             filtered = filtered.Where(e => e.MoodCategory == _moodFilter);
         }
 
+        // Tag filter (AND logic - entry must have ALL selected tags)
+        if (_selectedTags.Any())
+        {
+            filtered = filtered.Where(e =>
+            {
+                var entryTags = e.GetTagsList();
+                return _selectedTags.All(selectedTag => entryTags.Contains(selectedTag));
+            });
+        }
+
         _filteredEntries = filtered.ToList();
         Console.WriteLine($"[ViewDiary] Filtered entries count: {_filteredEntries.Count}");
-        foreach (var entry in _filteredEntries.Take(5))
-        {
-            Console.WriteLine($"[ViewDiary] Entry: ID={entry.Id}, Date={entry.DateKey}, Title={entry.Title}");
-        }
         _currentPage = 1;
         UpdatePagination();
     }
@@ -574,9 +906,9 @@
     private void UpdatePagination()
     {
         _paginatedEntries = _filteredEntries
-        .Skip((_currentPage - 1) * _pageSize)
-        .Take(_pageSize)
-        .ToList();
+            .Skip((_currentPage - 1) * _pageSize)
+            .Take(_pageSize)
+            .ToList();
     }
 
     private void GoToPage(int page)
@@ -589,6 +921,7 @@
     private void LastPage() => GoToPage(_totalPages);
     private void PreviousPage() { if (_currentPage > 1) GoToPage(_currentPage - 1); }
     private void NextPage() { if (_currentPage < _totalPages) GoToPage(_currentPage + 1); }
+
     private void NavigateToEntry(string dateKey)
     {
         NavigationManager.NavigateTo($"/diary/{dateKey}");
@@ -609,5 +942,6 @@
         }
         _showDeleteConfirm = false;
         await LoadEntries();
+        await LoadAvailableTags();
     }
 }

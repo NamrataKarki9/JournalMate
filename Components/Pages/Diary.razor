@@ -140,10 +140,35 @@
                         </span>
                     }
                 </div>
-                <div class="add-tag-row">
-                    <input type="text" class="tag-input" placeholder="Add a tag..." @bind="_newTagInput"
-                           @bind:event="oninput" @onkeydown="HandleTagKeyPress" />
-                    <button class="add-tag-btn" @onclick="AddTag">+</button>
+                <div class="add-tag-container">
+                    <div class="add-tag-row">
+                        <input type="text"
+                               class="tag-input"
+                               placeholder="Add a tag..."
+                               value="@_newTagInput"
+                               @oninput="HandleTagInput"
+                               @onkeydown="HandleTagKeyPress"
+                               @onfocus="() => _showTagSuggestions = true"
+                               @onblur="HandleTagInputBlur" />
+                        <button class="add-tag-btn" @onclick="AddTag">+</button>
+                    </div>
+                    @if (_showTagSuggestions && _tagSuggestions.Any())
+                    {
+                        <div class="tag-suggestions">
+                            @foreach (var suggestion in _tagSuggestions)
+                            {
+                                <div class="tag-suggestion-item"
+                                     @onmousedown="() => SelectSuggestedTag(suggestion)">
+                                    <span class="suggestion-icon">🏷️</span>
+                                    <span class="suggestion-text">@suggestion</span>
+                                    @if (TagData.IsPreBuiltTag(suggestion))
+                                    {
+                                        <span class="suggestion-badge">Built-in</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
             </div>
 
@@ -160,11 +185,6 @@
                     }
                 </select>
             </div>
-
-            @* <div class="ai-section glass-card">
-                <span class="ai-icon">🤖</span>
-                <p>Analyze sentiment with AI (coming soon)</p>
-            </div> *@
         </aside>
     </div>
 </div>
@@ -596,6 +616,11 @@
         padding: 0;
     }
 
+    /* NEW: Tag autocomplete styles */
+    .add-tag-container {
+        position: relative;
+    }
+
     .add-tag-row {
         display: flex;
         gap: 8px;
@@ -610,7 +635,12 @@
         color: var(--jm-text-primary);
         font-size: 13px;
         outline: none;
+        transition: all var(--jm-transition-fast);
     }
+
+        .tag-input:focus {
+            border-color: var(--jm-accent);
+        }
 
     .add-tag-btn {
         width: 32px;
@@ -621,6 +651,61 @@
         color: white;
         font-size: 18px;
         cursor: pointer;
+        transition: all var(--jm-transition-fast);
+    }
+
+        .add-tag-btn:hover {
+            background: var(--jm-accent-dark);
+        }
+
+    /* Tag suggestions dropdown */
+    .tag-suggestions {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        margin-top: 4px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-sm);
+        box-shadow: var(--jm-shadow-lg);
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 100;
+    }
+
+    .tag-suggestion-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+    }
+
+        .tag-suggestion-item:hover {
+            background: var(--jm-surface-hover);
+        }
+
+    .suggestion-icon {
+        font-size: 14px;
+        flex-shrink: 0;
+    }
+
+    .suggestion-text {
+        flex: 1;
+        font-size: 13px;
+        color: var(--jm-text-primary);
+    }
+
+    .suggestion-badge {
+        font-size: 10px;
+        padding: 2px 6px;
+        background: var(--jm-accent);
+        color: white;
+        border-radius: var(--jm-radius-full);
+        text-transform: uppercase;
+        font-weight: 600;
     }
 
     .category-select {
@@ -633,23 +718,6 @@
         font-size: 13px;
         outline: none;
         cursor: pointer;
-    }
-
-    .ai-section {
-        text-align: center;
-        padding: 24px 16px;
-    }
-
-    .ai-icon {
-        font-size: 32px;
-        display: block;
-        margin-bottom: 8px;
-    }
-
-    .ai-section p {
-        font-size: 13px;
-        color: var(--jm-text-muted);
-        margin: 0;
     }
 
     .modal-overlay {
@@ -735,6 +803,10 @@
     private DateTime? RecordCreationTime = null;
 
     private string _newTagInput = "";
+    private List<string> _tagSuggestions = new();
+    private bool _showTagSuggestions = false;
+    private List<string> _userCustomTags = new();
+
     private int _wordCount = 0;
     private int _readTime = 0;
     private bool _isSaving = false;
@@ -746,12 +818,12 @@
 
     private readonly string[] _quickMoods = { "Radiant", "Calm", "Reflective", "Tired" };
     private readonly string[] _dailyPrompts = {
-"What is one small thing that brought you joy today, and why did it stand out?",
-"Describe a moment today when you felt truly present.",
-"What are you grateful for right now?",
-"What challenge did you face today and how did you handle it?",
-"What would make tomorrow even better than today?"
-};
+        "What is one small thing that brought you joy today, and why did it stand out?",
+        "Describe a moment today when you felt truly present.",
+        "What are you grateful for right now?",
+        "What challenge did you face today and how did you handle it?",
+        "What would make tomorrow even better than today?"
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -764,6 +836,7 @@
         }
 
         await LoadEntryForDate();
+        await LoadCustomTags();
 
         // Apply global mood if set (e.g. from Dashboard)
         if (!string.IsNullOrEmpty(AppState.GlobalMood))
@@ -831,6 +904,19 @@
                 JS.InvokeVoidAsync("QuillEditor.destroy", "quill-editor");
             }
             catch { }
+        }
+    }
+
+    private async Task LoadCustomTags()
+    {
+        try
+        {
+            var tagFrequency = await Db.GetTagFrequencyAsync();
+            _userCustomTags = tagFrequency.Keys.ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading custom tags: {ex.Message}");
         }
     }
 
@@ -942,6 +1028,7 @@
             RecordCreationTime = DateTime.Now;
 
             await UpdateWordCountFromQuill();
+            await LoadCustomTags(); // Refresh custom tags list
 
             await Task.Delay(2000);
             _statusMessage = "";
@@ -953,12 +1040,75 @@
         }
     }
 
+    // NEW: Handle tag input changes for autocomplete
+    private void HandleTagInput(ChangeEventArgs e)
+    {
+        _newTagInput = e.Value?.ToString() ?? "";
+        UpdateTagSuggestions();
+    }
+
+    private void UpdateTagSuggestions()
+    {
+        if (string.IsNullOrWhiteSpace(_newTagInput))
+        {
+            _tagSuggestions = new List<string>();
+            return;
+        }
+
+        var query = _newTagInput.Trim();
+
+        // Search predefined tags
+        var predefinedMatches = TagData.SearchTags(query);
+
+        // Search user's custom tags
+        var customMatches = _userCustomTags
+            .Where(t => t.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .Where(t => !SelectedTags.Contains(t))
+            .ToList();
+
+        // Combine and deduplicate
+        _tagSuggestions = predefinedMatches
+            .Concat(customMatches)
+            .Distinct()
+            .Where(t => !SelectedTags.Contains(t))
+            .Take(8)
+            .ToList();
+
+        _showTagSuggestions = _tagSuggestions.Any();
+    }
+
+    private void SelectSuggestedTag(string tag)
+    {
+        if (!SelectedTags.Contains(tag))
+        {
+            SelectedTags.Add(tag);
+            _newTagInput = "";
+            _tagSuggestions = new List<string>();
+            _showTagSuggestions = false;
+        }
+    }
+
+    private void HandleTagInputBlur()
+    {
+        // Delay to allow click event on suggestion to fire
+        Task.Delay(200).ContinueWith(_ =>
+        {
+            InvokeAsync(() =>
+            {
+                _showTagSuggestions = false;
+                StateHasChanged();
+            });
+        });
+    }
+
     private void AddTag()
     {
         if (!string.IsNullOrWhiteSpace(_newTagInput) && !SelectedTags.Contains(_newTagInput))
         {
             SelectedTags.Add(_newTagInput.Trim());
             _newTagInput = "";
+            _tagSuggestions = new List<string>();
+            _showTagSuggestions = false;
         }
     }
 
@@ -972,6 +1122,11 @@
         if (e.Key == "Enter")
         {
             AddTag();
+        }
+        else if (e.Key == "Escape")
+        {
+            _showTagSuggestions = false;
+            _tagSuggestions = new List<string>();
         }
     }
 
