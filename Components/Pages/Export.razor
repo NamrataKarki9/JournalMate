@@ -5,6 +5,8 @@
 @inject JournalDatabase Db
 @inject AppCurrentState AppState
 @inject NavigationManager NavManager
+@inject IFileSaverService FileSaver
+@inject IPdfExportService PdfExporter
 @implements IDisposable
 
 <div class="export-page">
@@ -138,9 +140,10 @@
             <div class="info-card glass-card">
                 <h3>💡 Export Information</h3>
                 <ul>
-                    <li>Entries are exported as a text file you can print or convert to PDF</li>
+                    <li>Entries are exported as a professionally formatted PDF file</li>
                     <li>Each entry includes the date, title, mood, tags, and content</li>
-                    <li>The export file will be saved to your device's app directory</li>
+                    <li>The PDF file will be saved to your chosen location</li>
+                    <li>Perfect for printing, archiving, or sharing</li>
                 </ul>
             </div>
         </div>
@@ -571,85 +574,42 @@
             _entriesInRange = 0;
         }
     }
+    private async Task ExportEntries()
+    {
+        if (_entriesInRange == 0) return;
 
-    @inject JournalMate.Services.IFileSaverService FileSaver
+        _isExporting = true;
+        _message = "";
 
-    @code {
-        // ... existing properties ...
-
-        private async Task ExportEntries()
+        try
         {
-            if (_entriesInRange == 0) return;
+            var rangeText = _selectedRange == "all" ? "All Time" : $"{_startDate:MMM dd, yyyy} - {_endDate:MMM dd, yyyy}";
 
-            _isExporting = true;
-            _message = "";
+            // Generate PDF using the new service
+            var pdfBytes = await PdfExporter.GeneratePdfAsync(_previewEntries, rangeText, _totalWordsInRange);
 
-            try
+            var suggestedFileName = $"JournalMate_Export_{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
+            var savedPath = await FileSaver.SavePdfFileAsync(suggestedFileName, pdfBytes);
+
+            if (savedPath != null)
             {
-                var content = new System.Text.StringBuilder();
-                // ... [content building logic remains the same] ...
-                content.AppendLine("═══════════════════════════════════════════════════════════");
-                content.AppendLine(" JOURNALMATE EXPORT ");
-                content.AppendLine($" Generated: {DateTime.Now:MMMM dd, yyyy h:mm tt}");
-                content.AppendLine("═══════════════════════════════════════════════════════════");
-                content.AppendLine();
-                var rangeText = _selectedRange == "all" ? "All Time" : $"{_startDate:MMM dd, yyyy} - {_endDate:MMM dd, yyyy}";
-                content.AppendLine($"Date Range: {rangeText}");
-                content.AppendLine($"Total Entries: {_entriesInRange}");
-                content.AppendLine($"Total Words: {_totalWordsInRange}");
-                content.AppendLine();
-                content.AppendLine("═══════════════════════════════════════════════════════════");
-                content.AppendLine();
-
-                foreach (var entry in _previewEntries)
-                {
-                    DateTime.TryParse(entry.DateKey, out var entryDate);
-                    content.AppendLine("───────────────────────────────────────────────────────────");
-                    content.AppendLine($"📅 {entryDate:dddd, MMMM dd, yyyy}");
-                    content.AppendLine($"📝 {entry.Title}");
-                    content.AppendLine($"😊 Mood: {entry.PrimaryMood}" +
-                    (string.IsNullOrEmpty(entry.SecondaryMood1) ? "" : $", {entry.SecondaryMood1}") +
-                    (string.IsNullOrEmpty(entry.SecondaryMood2) ? "" : $", {entry.SecondaryMood2}"));
-
-                    if (!string.IsNullOrEmpty(entry.Category))
-                        content.AppendLine($"📁 Category: {entry.Category}");
-
-                    if (entry.GetTagsList().Any())
-                        content.AppendLine($"🏷️ Tags: {string.Join(", ", entry.GetTagsList())}");
-
-                    content.AppendLine($"📊 Word Count: {entry.WordCount}");
-                    content.AppendLine();
-                    content.AppendLine(entry.Content);
-                    content.AppendLine();
-                }
-
-                content.AppendLine("═══════════════════════════════════════════════════════════");
-                content.AppendLine(" END OF JOURNAL EXPORT ");
-                content.AppendLine("═══════════════════════════════════════════════════════════");
-
-                var suggestedFileName = $"JournalMate_Export_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
-                var savedPath = await FileSaver.SaveFileAsync(suggestedFileName, content.ToString());
-
-                if (savedPath != null)
-                {
-                    _message = $"✓ Exported successfully! File saved to: {savedPath}";
-                    _isError = false;
-                }
-                else
-                {
-                    _message = "Export cancelled by user.";
-                    _isError = false;
-                }
+                _message = $"✓ PDF exported successfully! File saved to: {savedPath}";
+                _isError = false;
             }
-            catch (Exception ex)
+            else
             {
-                _message = $"Export failed: {ex.Message}";
-                _isError = true;
+                _message = "Export cancelled by user.";
+                _isError = false;
             }
-            finally
-            {
-                _isExporting = false;
-            }
+        }
+        catch (Exception ex)
+        {
+            _message = $"Export failed: {ex.Message}";
+            _isError = true;
+        }
+        finally
+        {
+            _isExporting = false;
         }
     }
 }

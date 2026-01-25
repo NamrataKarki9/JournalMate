@@ -33,7 +33,7 @@ namespace JournalMate
                 var appState = sp.GetRequiredService<AppCurrentState>();
                 var dbPath = Path.Combine(FileSystem.AppDataDirectory, "journal.db3");
                 var db = new JournalDatabase(dbPath, appState);
-                Task.Run(async () => await db.InitAsync());
+                Task.Run(async () => await db.InitAsync()).Wait();
                 return db;
             });
 
@@ -46,6 +46,7 @@ namespace JournalMate
             });
 
             builder.Services.AddSingleton<IFileSaverService, FileSaverService>();
+            builder.Services.AddSingleton<IPdfExportService, PdfExportService>();
 
             return builder.Build();
         }
