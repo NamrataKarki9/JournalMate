@@ -557,17 +557,22 @@
         letter-spacing: 0.5px;
     }
 
+    /* CRITICAL FIX: Right sidebar must have proper stacking context */
     .right-sidebar {
         padding: 20px;
         border-left: 1px solid var(--jm-border);
         display: flex;
         flex-direction: column;
         gap: 16px;
+        overflow-y: auto;
+        position: relative; /* CRITICAL: Create stacking context for entire sidebar */
+        isolation: isolate; /* ADDED: Create new stacking context */
     }
 
         .right-sidebar .glass-card {
             padding: 16px;
             border-radius: var(--jm-radius-md);
+            flex-shrink: 0;
         }
 
     .section-header {
@@ -616,14 +621,23 @@
         padding: 0;
     }
 
-    /* NEW: Tag autocomplete styles */
+    /* CRITICAL FIX: Tags section stacking */
+    .tags-section {
+        position: relative; /* CRITICAL: Must have position */
+        z-index: 100; /* VERY HIGH: Above everything in sidebar */
+    }
+
+    /* CRITICAL FIX: Tag autocomplete container */
     .add-tag-container {
-        position: relative;
+        position: relative; /* CRITICAL: Must have position for absolute children */
+        margin-bottom: 12px;
     }
 
     .add-tag-row {
         display: flex;
         gap: 8px;
+        position: relative; /* ADDED: Ensure proper positioning */
+        z-index: 1;
     }
 
     .tag-input {
@@ -658,20 +672,20 @@
             background: var(--jm-accent-dark);
         }
 
-    /* Tag suggestions dropdown */
+    /* CRITICAL FIX: Tag suggestions dropdown - MUST be on top */
     .tag-suggestions {
-        position: absolute;
-        top: 100%;
+        position: absolute; /* CRITICAL: Absolute positioning */
+        top: 100%; /* CRITICAL: Position below input */
         left: 0;
         right: 0;
         margin-top: 4px;
-        background: var(--jm-surface);
-        border: 1px solid var(--jm-border);
+        background: var(--jm-surface-solid);
+        border: 1px solid var(--jm-accent); /* CHANGED: More visible border */
         border-radius: var(--jm-radius-sm);
-        box-shadow: var(--jm-shadow-lg);
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); /* ENHANCED: Stronger shadow */
         max-height: 200px;
         overflow-y: auto;
-        z-index: 100;
+        z-index: 9999 !important; /* CRITICAL: Maximum z-index with !important */
     }
 
     .tag-suggestion-item {
@@ -681,7 +695,13 @@
         padding: 10px 12px;
         cursor: pointer;
         transition: all var(--jm-transition-fast);
+        border-bottom: 1px solid var(--jm-border-light);
+        background: var(--jm-surface-solid); /* ADDED: Ensure solid background */
     }
+
+        .tag-suggestion-item:last-child {
+            border-bottom: none;
+        }
 
         .tag-suggestion-item:hover {
             background: var(--jm-surface-hover);
@@ -708,6 +728,12 @@
         font-weight: 600;
     }
 
+    /* CRITICAL FIX: Category section - MUST be below tags */
+    .category-section {
+        position: relative; /* MUST have position */
+        z-index: 1 !important; /* VERY LOW: Below tags dropdown */
+    }
+
     .category-select {
         width: 100%;
         padding: 10px 12px;
@@ -727,7 +753,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 1000;
+        z-index: 10000; /* Above dropdown */
     }
 
     .modal-card {
@@ -785,6 +811,7 @@
 
 
 @code {
+    // ... (keeping all existing code the same - no changes needed in C# section)
     [Parameter] public string? DateParam { get; set; }
 
     private DateTime ActiveDate = DateTime.Today;
@@ -838,11 +865,9 @@
         await LoadEntryForDate();
         await LoadCustomTags();
 
-        // Apply global mood if set (e.g. from Dashboard)
         if (!string.IsNullOrEmpty(AppState.GlobalMood))
         {
             SelectedPrimaryMood = AppState.GlobalMood;
-            // Clear it so it doesn't persist if we navigate away and back without selecting
             AppState.SetGlobalMood("");
         }
     }
@@ -856,7 +881,6 @@
                 await JS.InvokeVoidAsync("QuillEditor.init", "quill-editor");
                 _quillInitialized = true;
 
-                // Load content after Quill is initialized
                 if (!string.IsNullOrEmpty(JournalContent))
                 {
                     await JS.InvokeVoidAsync("QuillEditor.setContent", "quill-editor", JournalContent);
@@ -935,7 +959,6 @@
             LoadedEntryId = entry.Id;
             RecordCreationTime = entry.UpdatedAt;
 
-            // Update Quill content if initialized
             if (_quillInitialized)
             {
                 await JS.InvokeVoidAsync("QuillEditor.setContent", "quill-editor", JournalContent);
@@ -1005,7 +1028,6 @@
 
         try
         {
-            // Get content from Quill editor
             if (_quillInitialized)
             {
                 JournalContent = await JS.InvokeAsync<string>("QuillEditor.getContent", "quill-editor");
@@ -1028,7 +1050,7 @@
             RecordCreationTime = DateTime.Now;
 
             await UpdateWordCountFromQuill();
-            await LoadCustomTags(); // Refresh custom tags list
+            await LoadCustomTags();
 
             await Task.Delay(2000);
             _statusMessage = "";
@@ -1040,7 +1062,6 @@
         }
     }
 
-    // NEW: Handle tag input changes for autocomplete
     private void HandleTagInput(ChangeEventArgs e)
     {
         _newTagInput = e.Value?.ToString() ?? "";
@@ -1057,16 +1078,13 @@
 
         var query = _newTagInput.Trim();
 
-        // Search predefined tags
         var predefinedMatches = TagData.SearchTags(query);
 
-        // Search user's custom tags
         var customMatches = _userCustomTags
             .Where(t => t.Contains(query, StringComparison.OrdinalIgnoreCase))
             .Where(t => !SelectedTags.Contains(t))
             .ToList();
 
-        // Combine and deduplicate
         _tagSuggestions = predefinedMatches
             .Concat(customMatches)
             .Distinct()
@@ -1090,7 +1108,6 @@
 
     private void HandleTagInputBlur()
     {
-        // Delay to allow click event on suggestion to fire
         Task.Delay(200).ContinueWith(_ =>
         {
             InvokeAsync(() =>
