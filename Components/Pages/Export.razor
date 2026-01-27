@@ -7,6 +7,7 @@
 @inject NavigationManager NavManager
 @inject IFileSaverService FileSaver
 @inject IPdfExportService PdfExporter
+@inject JournalMate.Services.ToastService ToastFactory
 @implements IDisposable
 
 <div class="export-page">
@@ -595,17 +596,20 @@
             {
                 _message = $"✓ PDF exported successfully! File saved to: {savedPath}";
                 _isError = false;
+                ToastFactory.ShowToast("Export successful!", ToastType.Success);
             }
             else
             {
                 _message = "Export cancelled by user.";
                 _isError = false;
+                ToastFactory.ShowToast("Export cancelled", ToastType.Info);
             }
         }
         catch (Exception ex)
         {
             _message = $"Export failed: {ex.Message}";
             _isError = true;
+            ToastFactory.ShowToast($"Export failed: {ex.Message}", ToastType.Error);
         }
         finally
         {

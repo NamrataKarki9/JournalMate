@@ -4,6 +4,7 @@
 @inject JournalMaui.Services.AuthService AuthService
 @inject NavigationManager NavManager
 @inject IJSRuntime JSRuntime
+@inject JournalMate.Services.ToastService ToastFactory
 @implements IDisposable
 
 <div @ref="_loginPageRef" class="login-container @(_isFirstTimeSetup ? "setup-mode" : "unlock-mode") @(CurrentAppState.IsDarkMode ? "theme-dark" : "theme-light")"
@@ -1025,6 +1026,7 @@
             if (string.IsNullOrWhiteSpace(_userName) || _enteredPin.Length != 4 || _confirmPin.Length != 4) return;
             if (_enteredPin != _confirmPin)
             {
+                ToastFactory.ShowToast("PINs do not match. Please try again.", ToastType.Warning);
                 _enteredPin = "";
                 _confirmPin = "";
                 return;
@@ -1034,8 +1036,13 @@
             bool success = await AuthService.SetupPinAsync(_enteredPin, _userName);
             if (success)
             {
+                ToastFactory.ShowToast("Setup complete! Welcome to JournalMate.", ToastType.Success);
                 CurrentAppState.AuthenticateUser(_userName);
                 NavManager.NavigateTo("/dashboard", replace: true);
+            }
+            else
+            {
+               ToastFactory.ShowToast("Setup failed. Please try again.", ToastType.Error);
             }
             _isAuthenticating = false;
         }
@@ -1049,6 +1056,7 @@
             var result = await AuthService.VerifyPinAsync(_enteredPin);
             if (result.success)
             {
+                ToastFactory.ShowToast($"Welcome back, {result.displayName}!", ToastType.Success);
                 CurrentAppState.AuthenticateUser(result.displayName);
                 NavManager.NavigateTo("/dashboard", replace: true);
             }
@@ -1057,6 +1065,14 @@
                 _enteredPin = "";
                 _loginErrorMessage = result.message;
                 _isLockedOut = result.message.Contains("locked", StringComparison.OrdinalIgnoreCase);
+                if (_isLockedOut)
+                {
+                    ToastFactory.ShowToast("Account locked due to too many failed attempts.", ToastType.Error);
+                }
+                else
+                {
+                    ToastFactory.ShowToast("Incorrect PIN. Please try again.", ToastType.Error);
+                }
             }
             _isAuthenticating = false;
         }

@@ -1,0 +1,126 @@
+@using JournalMate.Services
+@implements IDisposable
+@inject ToastService ToastService
+
+@if (IsVisible)
+{
+    <div class="toast-container @Type.ToString().ToLower()">
+        <div class="toast-content">
+            <span class="toast-icon">@GetIcon()</span>
+            <span class="toast-message">@Message</span>
+            <button class="toast-close" @onclick="HideToast">×</button>
+        </div>
+    </div>
+}
+
+<style>
+    .toast-container {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        min-width: 300px;
+        max-width: 400px;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        color: white;
+        z-index: 10000;
+        animation: slideIn 0.3s ease-out;
+        font-family: 'Open Sans', sans-serif;
+    }
+
+    @@keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+
+    .toast-container.success { background-color: var(--jm-success); color: #fff; }
+    .toast-container.error { background-color: var(--jm-error); color: #fff; }
+    .toast-container.warning { background-color: var(--jm-warning); color: #fff; }
+    .toast-container.info { background-color: var(--jm-mood-neutral); color: #fff; }
+
+    .toast-content {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .toast-icon {
+        margin-right: 10px;
+        font-size: 1.2rem;
+    }
+
+    .toast-message {
+        flex-grow: 1;
+        font-size: 0.95rem;
+    }
+
+    .toast-close {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 1.5rem;
+        cursor: pointer;
+        margin-left: 10px;
+        line-height: 1;
+        opacity: 0.8;
+    }
+
+    .toast-close:hover {
+        opacity: 1;
+    }
+</style>
+
+@code {
+    private string Message { get; set; } = string.Empty;
+    private ToastType Type { get; set; } = ToastType.Info;
+    private bool IsVisible { get; set; } = false;
+    private System.Timers.Timer? _timer;
+
+    protected override void OnInitialized()
+    {
+        ToastService.OnShow += ShowToast;
+    }
+
+    private void ShowToast(string message, ToastType type, int duration)
+    {
+        Message = message;
+        Type = type;
+        IsVisible = true;
+        InvokeAsync(StateHasChanged);
+
+        _timer?.Stop();
+        _timer?.Dispose();
+        _timer = new System.Timers.Timer(duration);
+        _timer.Elapsed += (s, e) =>
+        {
+            IsVisible = false;
+            _timer.Stop();
+            _timer.Dispose();
+            _timer = null;
+            InvokeAsync(StateHasChanged);
+        };
+        _timer.Start();
+    }
+
+    private void HideToast()
+    {
+        IsVisible = false;
+        _timer?.Stop();
+    }
+
+    private string GetIcon() => Type switch
+    {
+        ToastType.Success => "✓",
+        ToastType.Error => "⚠",
+        ToastType.Warning => "!",
+        ToastType.Info => "ℹ",
+        _ => "ℹ"
+    };
+
+    public void Dispose()
+    {
+        ToastService.OnShow -= ShowToast;
+        _timer?.Dispose();
+    }
+}

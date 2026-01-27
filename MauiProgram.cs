@@ -47,6 +47,7 @@ namespace JournalMate
 
             builder.Services.AddSingleton<IFileSaverService, FileSaverService>();
             builder.Services.AddSingleton<IPdfExportService, PdfExportService>();
+            builder.Services.AddSingleton<ToastService>();
 
             return builder.Build();
         }

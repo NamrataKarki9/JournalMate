@@ -4,6 +4,7 @@
 @inject JournalDatabase Db
 @inject NavigationManager NavigationManager
 @inject JournalMate.Services.AppCurrentState AppState
+@inject JournalMate.Services.ToastService ToastFactory
 @implements IDisposable
 
 <div class="viewdiary-page">
@@ -187,7 +188,7 @@
 @if (_showDeleteConfirm)
 {
     <div class="modal-overlay" @onclick="() => _showDeleteConfirm = false">
-        <div class="modal-dialog glass-card" @onclick:stopPropagation="true">
+        <div class="modal-dialog glass-solid" @onclick:stopPropagation="true">
             <h3>Delete Entry?</h3>
             <p>Are you sure you want to delete this entry? This cannot be undone.</p>
             <div class="modal-actions">
@@ -675,13 +676,15 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 1000;
+        justify-content: center;
+        z-index: 20000;
     }
 
     .modal-dialog {
         max-width: 400px;
         padding: 24px;
         text-align: center;
+        pointer-events: auto;
     }
 
         .modal-dialog h3 {
@@ -810,6 +813,10 @@
             Console.WriteLine($"[ViewDiary] Loaded {_allEntries.Count} entries");
             ApplyFilters();
         }
+        catch (Exception ex)
+        {
+            ToastFactory.ShowToast($"Failed to load entries: {ex.Message}", ToastType.Error);
+        }
         finally
         {
             _isLoading = false;
@@ -931,17 +938,46 @@
     {
         _deleteTargetId = id;
         _showDeleteConfirm = true;
+        StateHasChanged();
     }
 
     private async Task DeleteEntry()
     {
-        Console.WriteLine($"[ViewDiary] Deleting entry with ID: {_deleteTargetId}");
-        if (_deleteTargetId > 0)
-        {
-            await Db.DeleteByIdAsync(_deleteTargetId);
-        }
+        Console.WriteLine($"[ViewDiary] Delete confirmed for ID: {_deleteTargetId}");
+        
+        // 1. Close Modal Immediately
         _showDeleteConfirm = false;
-        await LoadEntries();
-        await LoadAvailableTags();
+        StateHasChanged();
+
+        if (_deleteTargetId <= 0) return;
+
+        // 2. Optimistic Update: Remove from local list immediately
+        var entryToRemove = _allEntries.FirstOrDefault(e => e.Id == _deleteTargetId);
+        if (entryToRemove != null)
+        {
+            _allEntries.Remove(entryToRemove);
+            ApplyFilters(); // Recalculate filtered list and pagination
+            ToastFactory.ShowToast("Data deleted successfully", ToastType.Success);
+            StateHasChanged(); // Force update of the list
+        }
+
+        // 3. Perform Database Operation in Background
+        try
+        {
+            var idToDelete = _deleteTargetId; // Capture ID
+            await Task.Run(async () => 
+            {
+                await Db.DeleteByIdAsync(idToDelete);
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ViewDiary] DB Delete failed: {ex}");
+            // Revert state if necessary (simplest is to reload)
+             await InvokeAsync(async () => {
+                ToastFactory.ShowToast($"Delete failed on server: {ex.Message}", ToastType.Error);
+                await LoadEntries(); // Restore data
+            });
+        }
     }
 }

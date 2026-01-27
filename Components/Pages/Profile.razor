@@ -4,6 +4,7 @@
 @inject JournalDatabase Db
 @inject JournalMate.Services.AppCurrentState AppState
 @inject NavigationManager NavManager
+@inject JournalMate.Services.ToastService ToastFactory
 @implements IDisposable
 
 <div class="profile-page @(AppState.IsDarkMode ? "dark-theme" : "light-theme")">
@@ -666,11 +667,12 @@
                 await stream.CopyToAsync(newStream);
 
                 AppState.UpdateProfilePicture(newFile);
+                ToastFactory.ShowToast("Profile picture updated", ToastType.Success);
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error picking image: {ex.Message}");
+            ToastFactory.ShowToast($"Error picking image: {ex.Message}", ToastType.Error);
         }
     }
 
@@ -678,9 +680,17 @@
     {
         if (!string.IsNullOrWhiteSpace(_tempName))
         {
-            await AuthService.UpdateDisplayNameAsync(_tempName);
-            AppState.UpdateUserDisplayName(_tempName);
-            _isEditingName = false;
+            try 
+            {
+                await AuthService.UpdateDisplayNameAsync(_tempName);
+                AppState.UpdateUserDisplayName(_tempName);
+                _isEditingName = false;
+                ToastFactory.ShowToast("Name updated successfully", ToastType.Success);
+            }
+            catch(Exception ex)
+            {
+                ToastFactory.ShowToast($"Failed to update name: {ex.Message}", ToastType.Error);
+            }
         }
     }
 }

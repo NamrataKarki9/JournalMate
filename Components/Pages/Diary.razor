@@ -5,6 +5,7 @@
 @inject JournalDatabase Db
 @inject NavigationManager NavManager
 @inject JournalMate.Services.AppCurrentState AppState
+@inject JournalMate.Services.ToastService ToastFactory
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -293,6 +294,25 @@
         .btn-export:hover {
             background: var(--jm-surface);
         }
+
+    .btn-delete-header {
+        padding: 10px 16px;
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--jm-error);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        border-radius: var(--jm-radius-md);
+        font-size: 16px;
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .btn-delete-header:hover {
+        background: rgba(239, 68, 68, 0.2);
+        transform: translateY(-1px);
+    }
 
     .diary-content {
         flex: 1;
@@ -837,7 +857,6 @@
     private int _wordCount = 0;
     private int _readTime = 0;
     private bool _isSaving = false;
-    private string _statusMessage = "";
     private bool _showDeleteConfirm = false;
     private bool _showDatePicker = false;
     private int _promptIndex = 0;
@@ -1046,14 +1065,15 @@
             };
 
             await Db.SaveAsync(entry);
-            _statusMessage = "✓ All changes saved";
+            ToastFactory.ShowToast("Changes saved successfully!", ToastType.Success);
             RecordCreationTime = DateTime.Now;
 
             await UpdateWordCountFromQuill();
             await LoadCustomTags();
-
-            await Task.Delay(2000);
-            _statusMessage = "";
+        }
+        catch (Exception ex)
+        {
+            ToastFactory.ShowToast($"Failed to save: {ex.Message}", ToastType.Error);
         }
         finally
         {
@@ -1181,15 +1201,23 @@
 
     private async Task DeleteEntry()
     {
-        if (LoadedEntryId.HasValue)
+        try
         {
-            await Db.DeleteByIdAsync(LoadedEntryId.Value);
+            if (LoadedEntryId.HasValue)
+            {
+                await Db.DeleteByIdAsync(LoadedEntryId.Value);
+            }
+            else
+            {
+                await Db.DeleteAsync(ActiveDate);
+            }
+            ToastFactory.ShowToast("Data deleted successfully", ToastType.Success);
+            _showDeleteConfirm = false;
+            await ResetForm();
         }
-        else
+        catch (Exception ex)
         {
-            await Db.DeleteAsync(ActiveDate);
+            ToastFactory.ShowToast($"Failed to delete: {ex.Message}", ToastType.Error);
         }
-        _showDeleteConfirm = false;
-        await ResetForm();
     }
 }

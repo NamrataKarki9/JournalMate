@@ -4,6 +4,7 @@
 @inject JournalMate.Services.AppCurrentState AppState
 @inject AuthService AuthService
 @inject NavigationManager NavManager
+@inject JournalMate.Services.ToastService ToastFactory
 @implements IDisposable
 
 <div class="settings-page">
@@ -680,11 +681,12 @@
                 await stream.CopyToAsync(newStream);
 
                 AppState.UpdateProfilePicture(newFile);
+                ToastFactory.ShowToast("Profile picture updated", ToastType.Success);
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error picking image: {ex.Message}");
+            ToastFactory.ShowToast($"Error picking image: {ex.Message}", ToastType.Error);
         }
     }
 
@@ -723,19 +725,25 @@
             return;
         }
 
-        var result = await AuthService.ChangePinAsync(_currentPin, _newPin);
+        try
+        {
+            var result = await AuthService.ChangePinAsync(_currentPin, _newPin);
 
-        if (result.success)
-        {
-            _pinMessage = "PIN changed successfully!";
-            _pinError = false;
-            await Task.Delay(1500);
-            _showChangePinModal = false;
+            if (result.success)
+            {
+                ToastFactory.ShowToast("PIN changed successfully!", ToastType.Success);
+                _showChangePinModal = false;
+            }
+            else
+            {
+                _pinMessage = result.message;
+                _pinError = true;
+                ToastFactory.ShowToast(result.message, ToastType.Error);
+            }
         }
-        else
+        catch(Exception ex)
         {
-            _pinMessage = result.message;
-            _pinError = true;
+             ToastFactory.ShowToast($"Failed to change PIN: {ex.Message}", ToastType.Error);
         }
     }
 
@@ -743,6 +751,7 @@
     {
         AppState.RevokeAuthentication();
         NavManager.NavigateTo("/", replace: true);
+        ToastFactory.ShowToast("Logged out successfully", ToastType.Info);
     }
 
     private void ShowChangeNameModal()
@@ -757,6 +766,7 @@
         {
             AppState.UpdateUserDisplayName(_newName);
             _showChangeNameModal = false;
+            ToastFactory.ShowToast("Display name updated", ToastType.Success);
         }
     }
 
