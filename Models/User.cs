@@ -17,6 +17,11 @@ public class User
     public string DisplayName { get; set; } = "Journal User";
 
     /// <summary>
+    /// User's email for recovery
+    /// </summary>
+    public string Email { get; set; } = "";
+
+    /// <summary>
     /// Hashed PIN for security (using SHA256)
     /// </summary>
     public string PinHash { get; set; } = "";

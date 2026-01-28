@@ -58,6 +58,17 @@
     </ItemGroup>
 
     <ItemGroup>
+        <Compile Remove="new-repo-push - Copy\**" />
+        <Content Remove="new-repo-push - Copy\**" />
+        <EmbeddedResource Remove="new-repo-push - Copy\**" />
+        <MauiImage Remove="new-repo-push - Copy\**" />
+        <MauiFont Remove="new-repo-push - Copy\**" />
+        <MauiAsset Remove="new-repo-push - Copy\**" />
+        <MauiIcon Remove="new-repo-push - Copy\**" />
+        <MauiSplashScreen Remove="new-repo-push - Copy\**" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
         <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="$(MauiVersion)" />
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />

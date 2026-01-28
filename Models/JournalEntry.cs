@@ -117,4 +117,28 @@ public class JournalEntry
         WordCount = Content.Split(new[] { ' ', '\n', '\r', '\t' },
                                    StringSplitOptions.RemoveEmptyEntries).Length;
     }
+
+    /// <summary>
+    /// Get a plain text snippet of the content, stripping HTML
+    /// </summary>
+    public string GetPlainTextSnippet(int maxLength)
+    {
+        if (string.IsNullOrEmpty(Content))
+            return string.Empty;
+
+        // Strip HTML
+        var text = System.Text.RegularExpressions.Regex.Replace(Content, "<.*?>", string.Empty);
+        text = System.Net.WebUtility.HtmlDecode(text);
+        
+        if (string.IsNullOrWhiteSpace(text))
+            return string.Empty;
+
+        text = text.Trim();
+        
+        if (text.Length <= maxLength)
+            return text;
+            
+        return text.Substring(0, maxLength) + "...";
+    }
+
 }

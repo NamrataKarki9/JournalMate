@@ -1,6 +1,6 @@
 ﻿@page "/diary"
 @page "/diary/{DateParam}"
-@using JournalMaui.Services
+@using JournalMate.Services
 @using JournalMaui.Models
 @inject JournalDatabase Db
 @inject NavigationManager NavManager
@@ -25,7 +25,7 @@
         </div>
 
         <div class="header-actions">
-            <button class="btn-save" @onclick="SaveEntry" disabled="@_isSaving">
+            <button class="btn-save" @onclick="SaveEntry" disabled="@(_isSaving || string.IsNullOrWhiteSpace(SelectedPrimaryMood))">
                 @if (_isSaving)
                 {
                     <span>Saving...</span>
@@ -73,7 +73,7 @@
                             _calendarMonth.Month == ActiveDate.Month &&
                             currentDay == ActiveDate.Day;
                             <span class="cal-day @(isToday ? "today" : "") @(isSelected ? "selected" : "")"
-                                  @onclick="() => SelectCalendarDay(currentDay)">
+                                @onclick="() => SelectCalendarDay(currentDay)">
                                 @currentDay
                             </span>
                         }
@@ -91,30 +91,24 @@
         </aside>
 
         <main class="editor-main">
-            <div class="mood-bar">
-                <span class="mood-question">How are you feeling?</span>
-                <div class="mood-chips">
-                    @foreach (var mood in _quickMoods)
-                    {
-                        <button class="mood-chip-sm @(SelectedPrimaryMood == mood ? "active" : "")"
-                                @onclick="() => SelectPrimaryMood(mood)">
-                            @mood
-                        </button>
-                    }
-                </div>
-                @if (!string.IsNullOrEmpty(_statusMessage))
-                {
-                    <span class="auto-save-status">@_statusMessage</span>
-                }
-            </div>
-
             <div class="editor-card glass-card">
                 <div class="editor-content">
                     <input type="text" class="title-input" placeholder="Title of your entry..." @bind="EntryTitle"
-                           @bind:event="oninput" />
+                        @bind:event="oninput" disabled="@(string.IsNullOrWhiteSpace(SelectedPrimaryMood))" />
 
                     <div id="quill-editor" class="quill-container"></div>
                 </div>
+
+                @if (string.IsNullOrWhiteSpace(SelectedPrimaryMood))
+                {
+                    <div class="editor-blocker">
+                        <div class="blocker-content">
+                            <span class="blocker-icon">💭</span>
+                            <h3>First, tell us: How are you feeling today?</h3>
+                            <p>Select a mood from the sidebar to unlock your journal.</p>
+                        </div>
+                    </div>
+                }
 
                 <div class="editor-footer">
                     <span class="word-stats">@_wordCount WORDS • @_readTime MINUTES READ</span>
@@ -127,6 +121,55 @@
         </main>
 
         <aside class="right-sidebar">
+           <!-- Mood Selection Card -->
+            <div class="glass-card mood-card">
+                <h2 class="card-title">
+                    <span>😊</span> How are you feeling today?
+                </h2>
+                
+                <div class="category-grid">
+                    <button class="category-card @(_selectedCategory == "Positive" ? "active" : "")" 
+                            @onclick='() => _selectedCategory = "Positive"'>
+                        <span class="emoji">😊</span>
+                        <span class="label">Positive</span>
+                    </button>
+                    <button class="category-card @(_selectedCategory == "Neutral" ? "active" : "")" 
+                            @onclick='() => _selectedCategory = "Neutral"'>
+                        <span class="emoji">😐</span>
+                        <span class="label">Neutral</span>
+                    </button>
+                    <button class="category-card @(_selectedCategory == "Negative" ? "active" : "")" 
+                            @onclick='() => _selectedCategory = "Negative"'>
+                        <span class="emoji">😔</span>
+                        <span class="label">Negative</span>
+                    </button>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_selectedCategory))
+                {
+                    <div class="secondary-mood-section">
+                        <h3 class="secondary-title">Select your specific mood:</h3>
+                        <div class="mood-grid">
+                            @{
+                                var moods = _selectedCategory switch {
+                                    "Positive" => MoodData.Positive,
+                                    "Neutral" => MoodData.Neutral,
+                                    "Negative" => MoodData.Negative,
+                                    _ => new List<string>()
+                                };
+                            }
+                            @foreach (var mood in moods)
+                            {
+                                <button class="mood-chip @(SelectedPrimaryMood == mood ? "active" : "")"
+                                        @onclick="() => SelectMood(mood)">
+                                    <span class="emoji">@MoodData.GetMoodEmoji(mood)</span>
+                                    <span class="label">@mood</span>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
             <div class="tags-section glass-card">
                 <div class="section-header">
                     <span class="section-icon">🏷️</span>
@@ -143,14 +186,9 @@
                 </div>
                 <div class="add-tag-container">
                     <div class="add-tag-row">
-                        <input type="text"
-                               class="tag-input"
-                               placeholder="Add a tag..."
-                               value="@_newTagInput"
-                               @oninput="HandleTagInput"
-                               @onkeydown="HandleTagKeyPress"
-                               @onfocus="() => _showTagSuggestions = true"
-                               @onblur="HandleTagInputBlur" />
+                        <input type="text" class="tag-input" placeholder="Add a tag..." value="@_newTagInput"
+                            @oninput="HandleTagInput" @onkeydown="HandleTagKeyPress"
+                            @onfocus="() => _showTagSuggestions = true" @onblur="HandleTagInputBlur" />
                         <button class="add-tag-btn" @onclick="AddTag">+</button>
                     </div>
                     @if (_showTagSuggestions && _tagSuggestions.Any())
@@ -158,8 +196,7 @@
                         <div class="tag-suggestions">
                             @foreach (var suggestion in _tagSuggestions)
                             {
-                                <div class="tag-suggestion-item"
-                                     @onmousedown="() => SelectSuggestedTag(suggestion)">
+                                <div class="tag-suggestion-item" @onmousedown="() => SelectSuggestedTag(suggestion)">
                                     <span class="suggestion-icon">🏷️</span>
                                     <span class="suggestion-text">@suggestion</span>
                                     @if (TagData.IsPreBuiltTag(suggestion))
@@ -251,9 +288,9 @@
         transition: all var(--jm-transition-fast);
     }
 
-        .date-picker-btn:hover {
-            border-color: var(--jm-accent);
-        }
+    .date-picker-btn:hover {
+        border-color: var(--jm-accent);
+    }
 
     .dropdown-arrow {
         font-size: 10px;
@@ -276,9 +313,9 @@
         transition: all var(--jm-transition-fast);
     }
 
-        .btn-save:hover {
-            background: var(--jm-accent-dark);
-        }
+    .btn-save:hover {
+        background: var(--jm-accent-dark);
+    }
 
     .btn-export {
         padding: 10px 24px;
@@ -291,9 +328,28 @@
         transition: all var(--jm-transition-fast);
     }
 
-        .btn-export:hover {
-            background: var(--jm-surface);
-        }
+    .btn-export:hover {
+        background: var(--jm-surface);
+    }
+
+    .btn-delete-header {
+        padding: 10px 16px;
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--jm-error);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        border-radius: var(--jm-radius-md);
+        font-size: 16px;
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .btn-delete-header:hover {
+        background: rgba(239, 68, 68, 0.2);
+        transform: translateY(-1px);
+    }
 
     .btn-delete-header {
         padding: 10px 16px;
@@ -384,22 +440,22 @@
         transition: all var(--jm-transition-fast);
     }
 
-        .cal-day:hover:not(.empty) {
-            background: var(--jm-surface-hover);
-        }
+    .cal-day:hover:not(.empty) {
+        background: var(--jm-surface-hover);
+    }
 
-        .cal-day.today {
-            background: var(--jm-accent);
-            color: white;
-        }
+    .cal-day.today {
+        background: var(--jm-accent);
+        color: white;
+    }
 
-        .cal-day.selected {
-            border: 2px solid var(--jm-accent);
-        }
+    .cal-day.selected {
+        border: 2px solid var(--jm-accent);
+    }
 
-        .cal-day.empty {
-            cursor: default;
-        }
+    .cal-day.empty {
+        cursor: default;
+    }
 
     .prompt-section {
         border-top: 1px solid var(--jm-border);
@@ -458,16 +514,16 @@
         transition: all var(--jm-transition-fast);
     }
 
-        .mood-chip-sm:hover {
-            border-color: var(--jm-accent);
-            color: var(--jm-text-primary);
-        }
+    .mood-chip-sm:hover {
+        border-color: var(--jm-accent);
+        color: var(--jm-text-primary);
+    }
 
-        .mood-chip-sm.active {
-            background: var(--jm-accent);
-            border-color: var(--jm-accent);
-            color: white;
-        }
+    .mood-chip-sm.active {
+        background: var(--jm-accent);
+        border-color: var(--jm-accent);
+        color: white;
+    }
 
     .auto-save-status {
         font-size: 12px;
@@ -481,6 +537,15 @@
         flex-direction: column;
         padding: 0;
         overflow: hidden;
+        border: 1px solid var(--jm-border) !important;
+        background: var(--jm-bg-secondary) !important;
+        transition: all var(--jm-transition-fast);
+        position: relative; /* CRITICAL for blocker */
+    }
+
+    .editor-card:focus-within {
+        border-color: var(--jm-accent) !important;
+        box-shadow: 0 0 20px rgba(147, 51, 234, 0.15);
     }
 
     .editor-content {
@@ -491,19 +556,77 @@
         overflow-y: auto;
     }
 
+    .editor-blocker {
+        position: absolute;
+        inset: 0;
+        background: var(--jm-bg-primary); /* Use primary background to fully hide */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000; /* Extremely high to cover everything */
+        border-radius: var(--jm-radius-md);
+        animation: fadeIn 0.4s ease;
+        backdrop-filter: blur(10px);
+    }
+
+    .blocker-content {
+        text-align: center;
+        padding: 40px;
+        max-width: 400px;
+    }
+
+    .blocker-icon {
+        font-size: 48px;
+        display: block;
+        margin-bottom: 24px;
+        animation: bounce 2s infinite ease-in-out;
+    }
+
+    .blocker-content h3 {
+        color: var(--jm-text-primary);
+        font-size: 20px;
+        margin-bottom: 12px;
+    }
+
+    .blocker-content p {
+        color: var(--jm-text-muted);
+        font-size: 14px;
+        line-height: 1.6;
+    }
+
+    @@keyframes bounce {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-10px); }
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
     .title-input {
         background: transparent;
         border: none;
+        border-bottom: 2px solid transparent;
         font-size: 28px;
         font-weight: 600;
-        color: var(--jm-accent-light);
+        color: var(--jm-text-primary);
         outline: none;
         margin-bottom: 16px;
+        padding: 8px 0;
+        width: 100%;
+        transition: all var(--jm-transition-fast);
     }
 
-        .title-input::placeholder {
-            color: var(--jm-text-muted);
-        }
+    .title-input:focus {
+        border-bottom-color: var(--jm-accent);
+        color: var(--jm-accent-light);
+    }
+
+    .title-input::placeholder {
+        color: var(--jm-text-muted);
+        font-weight: 400;
+    }
 
     /* Quill Editor Styles */
     .quill-container {
@@ -526,10 +649,10 @@
         min-height: 300px;
     }
 
-        ::deep .ql-editor.ql-blank::before {
-            color: var(--jm-text-muted);
-            font-style: normal;
-        }
+    ::deep .ql-editor.ql-blank::before {
+        color: var(--jm-text-muted);
+        font-style: normal;
+    }
 
     ::deep .ql-toolbar {
         border: none !important;
@@ -539,14 +662,14 @@
         margin: -24px -24px 16px -24px;
     }
 
-        ::deep .ql-toolbar button {
-            color: var(--jm-text-secondary);
-        }
+    ::deep .ql-toolbar button {
+        color: var(--jm-text-secondary);
+    }
 
-            ::deep .ql-toolbar button:hover,
-            ::deep .ql-toolbar button.ql-active {
-                color: var(--jm-accent);
-            }
+    ::deep .ql-toolbar button:hover,
+    ::deep .ql-toolbar button.ql-active {
+        color: var(--jm-accent);
+    }
 
     ::deep .ql-stroke {
         stroke: var(--jm-text-secondary);
@@ -585,15 +708,17 @@
         flex-direction: column;
         gap: 16px;
         overflow-y: auto;
-        position: relative; /* CRITICAL: Create stacking context for entire sidebar */
-        isolation: isolate; /* ADDED: Create new stacking context */
+        position: relative;
+        /* CRITICAL: Create stacking context for entire sidebar */
+        isolation: isolate;
+        /* ADDED: Create new stacking context */
     }
 
-        .right-sidebar .glass-card {
-            padding: 16px;
-            border-radius: var(--jm-radius-md);
-            flex-shrink: 0;
-        }
+    .right-sidebar .glass-card {
+        padding: 16px;
+        border-radius: var(--jm-radius-md);
+        flex-shrink: 0;
+    }
 
     .section-header {
         display: flex;
@@ -643,20 +768,24 @@
 
     /* CRITICAL FIX: Tags section stacking */
     .tags-section {
-        position: relative; /* CRITICAL: Must have position */
-        z-index: 100; /* VERY HIGH: Above everything in sidebar */
+        position: relative;
+        /* CRITICAL: Must have position */
+        z-index: 100;
+        /* VERY HIGH: Above everything in sidebar */
     }
 
     /* CRITICAL FIX: Tag autocomplete container */
     .add-tag-container {
-        position: relative; /* CRITICAL: Must have position for absolute children */
+        position: relative;
+        /* CRITICAL: Must have position for absolute children */
         margin-bottom: 12px;
     }
 
     .add-tag-row {
         display: flex;
         gap: 8px;
-        position: relative; /* ADDED: Ensure proper positioning */
+        position: relative;
+        /* ADDED: Ensure proper positioning */
         z-index: 1;
     }
 
@@ -672,9 +801,9 @@
         transition: all var(--jm-transition-fast);
     }
 
-        .tag-input:focus {
-            border-color: var(--jm-accent);
-        }
+    .tag-input:focus {
+        border-color: var(--jm-accent);
+    }
 
     .add-tag-btn {
         width: 32px;
@@ -688,24 +817,29 @@
         transition: all var(--jm-transition-fast);
     }
 
-        .add-tag-btn:hover {
-            background: var(--jm-accent-dark);
-        }
+    .add-tag-btn:hover {
+        background: var(--jm-accent-dark);
+    }
 
     /* CRITICAL FIX: Tag suggestions dropdown - MUST be on top */
     .tag-suggestions {
-        position: absolute; /* CRITICAL: Absolute positioning */
-        top: 100%; /* CRITICAL: Position below input */
+        position: absolute;
+        /* CRITICAL: Absolute positioning */
+        top: 100%;
+        /* CRITICAL: Position below input */
         left: 0;
         right: 0;
         margin-top: 4px;
         background: var(--jm-surface-solid);
-        border: 1px solid var(--jm-accent); /* CHANGED: More visible border */
+        border: 1px solid var(--jm-accent);
+        /* CHANGED: More visible border */
         border-radius: var(--jm-radius-sm);
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); /* ENHANCED: Stronger shadow */
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        /* ENHANCED: Stronger shadow */
         max-height: 200px;
         overflow-y: auto;
-        z-index: 9999 !important; /* CRITICAL: Maximum z-index with !important */
+        z-index: 9999 !important;
+        /* CRITICAL: Maximum z-index with !important */
     }
 
     .tag-suggestion-item {
@@ -716,16 +850,17 @@
         cursor: pointer;
         transition: all var(--jm-transition-fast);
         border-bottom: 1px solid var(--jm-border-light);
-        background: var(--jm-surface-solid); /* ADDED: Ensure solid background */
+        background: var(--jm-surface-solid);
+        /* ADDED: Ensure solid background */
     }
 
-        .tag-suggestion-item:last-child {
-            border-bottom: none;
-        }
+    .tag-suggestion-item:last-child {
+        border-bottom: none;
+    }
 
-        .tag-suggestion-item:hover {
-            background: var(--jm-surface-hover);
-        }
+    .tag-suggestion-item:hover {
+        background: var(--jm-surface-hover);
+    }
 
     .suggestion-icon {
         font-size: 14px;
@@ -750,8 +885,10 @@
 
     /* CRITICAL FIX: Category section - MUST be below tags */
     .category-section {
-        position: relative; /* MUST have position */
-        z-index: 1 !important; /* VERY LOW: Below tags dropdown */
+        position: relative;
+        /* MUST have position */
+        z-index: 1 !important;
+        /* VERY LOW: Below tags dropdown */
     }
 
     .category-select {
@@ -773,7 +910,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 10000; /* Above dropdown */
+        z-index: 10000;
+        /* Above dropdown */
     }
 
     .modal-card {
@@ -783,15 +921,15 @@
         text-align: center;
     }
 
-        .modal-card h3 {
-            color: var(--jm-text-primary);
-            margin: 0 0 12px 0;
-        }
+    .modal-card h3 {
+        color: var(--jm-text-primary);
+        margin: 0 0 12px 0;
+    }
 
-        .modal-card p {
-            color: var(--jm-text-secondary);
-            margin: 0 0 24px 0;
-        }
+    .modal-card p {
+        color: var(--jm-text-secondary);
+        margin: 0 0 24px 0;
+    }
 
     .modal-actions {
         display: flex;
@@ -817,6 +955,132 @@
         cursor: pointer;
     }
 
+    /* Mood Selection Card Styles */
+    .mood-card {
+        padding: 24px;
+        position: relative;
+    }
+
+    .mood-card .card-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--jm-text-primary);
+        margin: 0 0 16px 0;
+    }
+
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+
+    .category-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 12px 8px;
+        background: var(--jm-surface);
+        border: 2px solid transparent;
+        border-radius: var(--jm-radius-md);
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+    }
+
+    .category-card:hover {
+        background: var(--jm-surface-hover);
+        transform: translateY(-2px);
+    }
+
+    .category-card.active {
+        border-color: var(--jm-accent);
+        background: rgba(147, 51, 234, 0.15);
+        box-shadow: 0 4px 12px rgba(147, 51, 234, 0.1);
+    }
+
+    .category-card .emoji {
+        font-size: 24px;
+    }
+
+    .category-card .label {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--jm-text-primary);
+    }
+
+    .secondary-mood-section {
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid var(--jm-border);
+        animation: fadeIn 0.4s ease;
+    }
+
+    .secondary-title {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--jm-text-muted);
+        margin-bottom: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .mood-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+    }
+
+    .mood-chip {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        padding: 8px 4px;
+        background: var(--jm-surface);
+        border: 1px solid var(--jm-border);
+        border-radius: var(--jm-radius-sm);
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+        min-width: 0;
+    }
+
+    .mood-chip:hover {
+        background: var(--jm-surface-hover);
+        border-color: var(--jm-accent);
+        transform: translateY(-1px);
+    }
+
+    .mood-chip.active {
+        background: rgba(147, 51, 234, 0.2);
+        border-color: var(--jm-accent);
+        box-shadow: var(--jm-shadow-glow);
+    }
+
+    .mood-chip .emoji {
+        font-size: 18px;
+    }
+
+    .mood-chip .label {
+        font-size: 10px;
+        color: var(--jm-text-secondary);
+        font-weight: 500;
+        text-align: center;
+        width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .mood-chip.active .label {
+        color: var(--jm-accent-light);
+    }
+
+
     @@media (max-width: 1024px) {
         .diary-content {
             grid-template-columns: 1fr;
@@ -831,7 +1095,6 @@
 
 
 @code {
-    // ... (keeping all existing code the same - no changes needed in C# section)
     [Parameter] public string? DateParam { get; set; }
 
     private DateTime ActiveDate = DateTime.Today;
@@ -861,15 +1124,16 @@
     private bool _showDatePicker = false;
     private int _promptIndex = 0;
     private bool _quillInitialized = false;
+    private string _selectedCategory = "";
 
     private readonly string[] _quickMoods = { "Radiant", "Calm", "Reflective", "Tired" };
     private readonly string[] _dailyPrompts = {
-        "What is one small thing that brought you joy today, and why did it stand out?",
-        "Describe a moment today when you felt truly present.",
-        "What are you grateful for right now?",
-        "What challenge did you face today and how did you handle it?",
-        "What would make tomorrow even better than today?"
-    };
+"What is one small thing that brought you joy today, and why did it stand out?",
+"Describe a moment today when you felt truly present.",
+"What are you grateful for right now?",
+"What challenge did you face today and how did you handle it?",
+"What would make tomorrow even better than today?"
+};
 
     protected override async Task OnInitializedAsync()
     {
@@ -977,6 +1241,7 @@
             SelectedTags = entry.GetTagsList();
             LoadedEntryId = entry.Id;
             RecordCreationTime = entry.UpdatedAt;
+            _selectedCategory = MoodData.GetMoodCategory(SelectedPrimaryMood);
 
             if (_quillInitialized)
             {
@@ -1001,6 +1266,7 @@
         SelectedTags = new();
         LoadedEntryId = null;
         RecordCreationTime = null;
+        _selectedCategory = "";
 
         if (_quillInitialized)
         {
@@ -1031,16 +1297,19 @@
         catch { }
     }
 
-    private void SelectPrimaryMood(string mood)
+
+    private void SelectMood(string mood)
     {
         SelectedPrimaryMood = mood;
+        StateHasChanged();
     }
 
     private async Task SaveEntry()
     {
         if (string.IsNullOrWhiteSpace(SelectedPrimaryMood))
         {
-            SelectedPrimaryMood = "Calm";
+            ToastFactory.ShowToast("Please select a mood before saving.", ToastType.Warning);
+            return;
         }
 
         _isSaving = true;
@@ -1084,7 +1353,15 @@
 
     private void HandleTagInput(ChangeEventArgs e)
     {
-        _newTagInput = e.Value?.ToString() ?? "";
+        var input = e.Value?.ToString() ?? "";
+        // Remove digits
+        _newTagInput = new string(input.Where(c => !char.IsDigit(c)).ToArray());
+        
+        if (input != _newTagInput)
+        {
+             ToastFactory.ShowToast("Numbers are not allowed in tags.", ToastType.Warning);
+        }
+        
         UpdateTagSuggestions();
     }
 
@@ -1101,16 +1378,16 @@
         var predefinedMatches = TagData.SearchTags(query);
 
         var customMatches = _userCustomTags
-            .Where(t => t.Contains(query, StringComparison.OrdinalIgnoreCase))
-            .Where(t => !SelectedTags.Contains(t))
-            .ToList();
+        .Where(t => t.Contains(query, StringComparison.OrdinalIgnoreCase))
+        .Where(t => !SelectedTags.Contains(t))
+        .ToList();
 
         _tagSuggestions = predefinedMatches
-            .Concat(customMatches)
-            .Distinct()
-            .Where(t => !SelectedTags.Contains(t))
-            .Take(8)
-            .ToList();
+        .Concat(customMatches)
+        .Distinct()
+        .Where(t => !SelectedTags.Contains(t))
+        .Take(8)
+        .ToList();
 
         _showTagSuggestions = _tagSuggestions.Any();
     }
@@ -1131,15 +1408,22 @@
         Task.Delay(200).ContinueWith(_ =>
         {
             InvokeAsync(() =>
-            {
-                _showTagSuggestions = false;
-                StateHasChanged();
-            });
+    {
+            _showTagSuggestions = false;
+            StateHasChanged();
+        });
         });
     }
 
     private void AddTag()
     {
+        // Extra validation
+        if (_newTagInput.Any(char.IsDigit))
+        {
+             ToastFactory.ShowToast("Tags cannot contain numbers.", ToastType.Warning);
+             return;
+        }
+
         if (!string.IsNullOrWhiteSpace(_newTagInput) && !SelectedTags.Contains(_newTagInput))
         {
             SelectedTags.Add(_newTagInput.Trim());

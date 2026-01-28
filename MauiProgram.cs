@@ -1,5 +1,5 @@
 ﻿using JournalMate.Services;
-using JournalMaui.Services;
+
 using Microsoft.Extensions.Logging;
 using MudBlazor.Services;
 

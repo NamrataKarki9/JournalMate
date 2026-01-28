@@ -1,5 +1,5 @@
 ﻿@page "/viewdiary"
-@using JournalMaui.Services
+@using JournalMate.Services
 @using JournalMaui.Models
 @inject JournalDatabase Db
 @inject NavigationManager NavigationManager
@@ -678,6 +678,7 @@
         justify-content: center;
         justify-content: center;
         z-index: 20000;
+        /* CRITICAL: High z-index to overlay everything */
     }
 
     .modal-dialog {
@@ -685,6 +686,7 @@
         padding: 24px;
         text-align: center;
         pointer-events: auto;
+        /* CRITICAL: Ensure clicks are received */
     }
 
         .modal-dialog h3 {
@@ -940,7 +942,7 @@
         _showDeleteConfirm = true;
         StateHasChanged();
     }
-
+    
     private async Task DeleteEntry()
     {
         Console.WriteLine($"[ViewDiary] Delete confirmed for ID: {_deleteTargetId}");

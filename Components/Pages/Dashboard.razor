@@ -1,5 +1,5 @@
 ﻿@page "/dashboard"
-@using JournalMaui.Services
+@using JournalMate.Services
 @using JournalMaui.Models
 @using JournalMate.Services
 @inject JournalDatabase Db
@@ -24,6 +24,13 @@
         </div>
     </header>
 
+    <select class="filter-select top-filter" @bind="_moodFilter" @bind:event="onchange" @bind:after="ApplyFilters">
+                    <option value="">All Moods</option>
+                    <option value="Positive">😊 Positive</option>
+                    <option value="Neutral">😐 Neutral</option>
+                    <option value="Negative">😔 Negative</option>
+    </select>
+
     <div class="dashboard-grid">
         <div class="main-column">
             <!-- Mood Selection Card -->
@@ -31,16 +38,49 @@
                 <h2 class="card-title">
                     <span>😊</span> How are you feeling today?
                 </h2>
-                <div class="mood-grid">
-                    @foreach (var mood in MoodData.GetAllMoods())
-                    {
-                        <button class="mood-chip @(SelectedMood == mood ? "active" : "")"
-                                @onclick="() => SelectAndNavigate(mood)">
-                            <span class="emoji">@MoodData.GetMoodEmoji(mood)</span>
-                            <span class="label">@mood</span>
-                        </button>
-                    }
+                
+                <div class="category-grid">
+                    <button class="category-card @(_selectedCategory == "Positive" ? "active" : "")" 
+                            @onclick='() => _selectedCategory = "Positive"'>
+                        <span class="emoji">😊</span>
+                        <span class="label">Positive</span>
+                    </button>
+                    <button class="category-card @(_selectedCategory == "Neutral" ? "active" : "")" 
+                            @onclick='() => _selectedCategory = "Neutral"'>
+                        <span class="emoji">😐</span>
+                        <span class="label">Neutral</span>
+                    </button>
+                    <button class="category-card @(_selectedCategory == "Negative" ? "active" : "")" 
+                            @onclick='() => _selectedCategory = "Negative"'>
+                        <span class="emoji">😔</span>
+                        <span class="label">Negative</span>
+                    </button>
                 </div>
+
+                @if (!string.IsNullOrEmpty(_selectedCategory))
+                {
+                    <div class="secondary-mood-section">
+                        <h3 class="secondary-title">Select your specific mood:</h3>
+                        <div class="mood-grid">
+                            @{
+                                var moods = _selectedCategory switch {
+                                    "Positive" => MoodData.Positive,
+                                    "Neutral" => MoodData.Neutral,
+                                    "Negative" => MoodData.Negative,
+                                    _ => new List<string>()
+                                };
+                            }
+                            @foreach (var mood in moods)
+                            {
+                                <button class="mood-chip @(SelectedMood == mood ? "active" : "")"
+                                        @onclick="() => SelectAndNavigate(mood)">
+                                    <span class="emoji">@MoodData.GetMoodEmoji(mood)</span>
+                                    <span class="label">@mood</span>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
             </div>
 
             <!-- Analytics Section -->
@@ -57,7 +97,6 @@
                         </select>
                     </div>
                 </div>
-
                 <!-- Stats Overview Grid -->
                 <div class="stats-overview-grid">
                     <div class="stat-card glass-card">
@@ -352,7 +391,7 @@
                                     </span>
                                 </div>
                                 <p class="reflection-content">
-                                    "@TruncateText(entry.Content, 80)"
+                                    "@entry.GetPlainTextSnippet(80)"
                                 </p>
                             </div>
                         }
@@ -434,6 +473,7 @@
         min-height: 100vh;
         padding: 32px 40px;
         background: var(--jm-bg-primary);
+        position: relative;
     }
 
     .page-header {
@@ -487,8 +527,10 @@
         align-items: center;
         gap: 8px;
         padding: 10px 16px;
-        background: var(--jm-surface);
-        border: 1px solid var(--jm-border);
+        background: rgba(255, 255, 255, 0.04);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: var(--jm-radius-full);
         color: var(--jm-text-secondary);
         font-size: 14px;
@@ -512,9 +554,15 @@
         gap: 20px;
     }
 
-    /* Mood Card */
+    /* Top Filter */
+    .top-filter {
+        margin-bottom: 5px;
+    }
+
+    /* Mood Card - Static Glass */
     .mood-card {
-        padding: 24px;
+        padding: 28px;
+        position: relative;
     }
 
     .card-title {
@@ -573,6 +621,69 @@
             color: var(--jm-accent-light);
         }
 
+    /* Category Grid Styles */
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-bottom: 8px;
+    }
+
+    .category-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 20px;
+        background: var(--jm-surface);
+        border: 2px solid transparent;
+        border-radius: var(--jm-radius-lg);
+        cursor: pointer;
+        transition: all var(--jm-transition-fast);
+    }
+
+    .category-card:hover {
+        background: var(--jm-surface-hover);
+        transform: translateY(-2px);
+    }
+
+    .category-card.active {
+        border-color: var(--jm-accent);
+        background: rgba(147, 51, 234, 0.15);
+        box-shadow: 0 4px 20px rgba(147, 51, 234, 0.2);
+    }
+
+    .category-card .emoji {
+        font-size: 32px;
+    }
+
+    .category-card .label {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--jm-text-primary);
+    }
+
+    .secondary-mood-section {
+        margin-top: 24px;
+        padding-top: 24px;
+        border-top: 1px solid var(--jm-border);
+        animation: fadeIn 0.4s ease;
+    }
+
+    .secondary-title {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--jm-text-muted);
+        margin-bottom: 20px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
     /* Analytics Section */
     .analytics-section {
         display: flex;
@@ -628,12 +739,18 @@
         align-items: center;
         gap: 16px;
         transition: all var(--jm-transition-fast);
+        background: rgba(255, 255, 255, 0.03) !important;
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
     }
 
-        .stat-card:hover {
-            transform: translateY(-4px);
-            box-shadow: var(--jm-shadow-md);
-        }
+    .stat-card:hover {
+        transform: translateY(-4px);
+        background: rgba(255, 255, 255, 0.05) !important;
+        border-color: rgba(147, 51, 234, 0.4) !important;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
 
     .stat-icon {
         width: 48px;
@@ -1063,12 +1180,18 @@
         padding: 20px;
         cursor: pointer;
         transition: all var(--jm-transition-fast);
+        background: rgba(255, 255, 255, 0.03) !important;
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
     }
 
-        .reflection-card:hover {
-            transform: translateY(-4px);
-            border-color: var(--jm-accent);
-        }
+    .reflection-card:hover {
+        transform: translateY(-4px);
+        background: rgba(255, 255, 255, 0.05) !important;
+        border-color: var(--jm-accent) !important;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
 
     .reflection-header {
         display: flex;
@@ -1096,10 +1219,12 @@
         font-style: italic;
     }
 
-    /* Sidebar Cards */
+    /* Sidebar Cards - Static Premium Glass */
     .streak-card {
         text-align: center;
-        padding: 28px 24px;
+        padding: 32px 24px;
+        background: rgba(147, 51, 234, 0.08) !important;
+        position: relative;
     }
 
     .streak-label {
@@ -1146,6 +1271,16 @@
 
     .insights-card {
         padding: 24px;
+        background: rgba(255, 255, 255, 0.03) !important;
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        transition: all var(--jm-transition-fast);
+    }
+
+    .insights-card:hover {
+        background: rgba(255, 255, 255, 0.05) !important;
+        border-color: rgba(147, 51, 234, 0.3) !important;
     }
 
     .insights-label {
@@ -1314,6 +1449,8 @@
     private List<WeeklyActivityData> _weeklyActivity = new();
     private string SelectedMood = "";
     private int _selectedRange = 30;
+    private string _moodFilter = "";
+    private string _selectedCategory = "";
 
     // For ring chart calculations
     private double _circumference = 2 * Math.PI * 70; // radius = 70
@@ -1353,16 +1490,26 @@
                 ? await Db.GetAllEntriesAsync()
                 : await Db.GetEntriesByDateRangeAsync(startDate, endDate);
 
+            // Apply mood filter if selected
+            if (!string.IsNullOrEmpty(_moodFilter))
+            {
+                allEntries = allEntries.Where(e => e.MoodCategory == _moodFilter).ToList();
+            }
+
             _totalEntries = allEntries.Count;
             _totalWords = allEntries.Sum(e => e.WordCount);
             _averageWords = _totalEntries > 0 ? _totalWords / _totalEntries : 0;
 
-            // Streak calculations
+            // Streak calculations (Streaks are general, but we could filter them too if desired)
+            // For now, we'll keep streaks as overall progress unless the user specifically wants mood streaks
             _currentStreak = await Db.GetCurrentStreakAsync();
             _longestStreak = await Db.GetLongestStreakAsync();
 
-            // Mood distribution
+            // Mood distribution (Calculated from ALL entries or filtered ones? Usually distribution is shown for the range)
             var moodDist = await Db.GetMoodDistributionAsync();
+            
+            // If we have a mood filter, the distribution doesn't make much sense scaled to 100% for one mood, 
+            // but we can still show it or filter it. For simplicity, we'll show the distribution for the range.
             var totalMoodEntries = moodDist.Values.Sum();
             if (totalMoodEntries > 0)
             {
@@ -1375,30 +1522,80 @@
             _mostFrequentMood = await Db.GetMostFrequentMoodAsync();
             _mostFrequentMoodCount = allEntries.Count(e => e.PrimaryMood == _mostFrequentMood);
 
-            // Tags
-            _topTags = await Db.GetTagFrequencyAsync();
-            _recentEntries = await Db.GetRecentAsync(3);
+            // Tags (Filtered by mood if applicable)
+            _topTags = new Dictionary<string, int>();
+            foreach (var entry in allEntries)
+            {
+                foreach (var tag in entry.GetTagsList())
+                {
+                    if (_topTags.ContainsKey(tag)) _topTags[tag]++;
+                    else _topTags[tag] = 1;
+                }
+            }
+            _topTags = _topTags.OrderByDescending(x => x.Value).ToDictionary(x => x.Key, x => x.Value);
 
-            // Missed days (last 30 days only)
+            _recentEntries = allEntries.OrderByDescending(e => e.DateKey).Take(3).ToList();
+
+            // Missed days (Streaks/missed days are usually not mood-specific)
             _missedDays = await Db.GetMissedDaysAsync(30);
 
-            // Week and month counts
-            _entriesThisWeek = await Db.GetEntriesThisWeekAsync();
-            _entriesThisMonth = await Db.GetEntriesThisMonthAsync();
-
-            // Calculate journaling days
-            var allDates = await Db.GetAllEntryDatesAsync();
-            if (allDates.Any() && DateTime.TryParse(allDates.Min(), out var firstDate))
+            // Week and month counts (Re-calculate based on filtered entries if mood filter is set)
+            if (!string.IsNullOrEmpty(_moodFilter))
             {
-                _journalingDays = (int)(DateTime.Today - firstDate).TotalDays + 1;
+                var today = DateTime.Today;
+                var startOfWeek = today.AddDays(-(int)today.DayOfWeek);
+                var startOfMonth = new DateTime(today.Year, today.Month, 1);
+                
+                _entriesThisWeek = allEntries.Count(e => DateTime.Parse(e.DateKey) >= startOfWeek);
+                _entriesThisMonth = allEntries.Count(e => DateTime.Parse(e.DateKey) >= startOfMonth);
+            }
+            else
+            {
+                _entriesThisWeek = await Db.GetEntriesThisWeekAsync();
+                _entriesThisMonth = await Db.GetEntriesThisMonthAsync();
             }
 
-            // Load weekly activity data
-            await LoadWeeklyActivity();
+            // Calculate journaling days
+            var allDates = allEntries.Select(e => e.DateKey).ToList();
+            if (allDates.Any())
+            {
+                var minDate = allDates.Min();
+                if (DateTime.TryParse(minDate, out var firstDate))
+                {
+                    _journalingDays = (int)(DateTime.Today - firstDate).TotalDays + 1;
+                }
+            }
+
+            // Load weekly activity data (Filtered by mood)
+            await LoadWeeklyActivityFromEntries(allEntries);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error loading dashboard: {ex.Message}");
+        }
+    }
+
+    private async Task ApplyFilters()
+    {
+        await LoadDashboardData();
+    }
+
+    private async Task LoadWeeklyActivityFromEntries(List<JournalEntry> entries)
+    {
+        _weeklyActivity = new List<WeeklyActivityData>();
+        var today = DateTime.Today;
+        var entryDateKeys = new HashSet<string>(entries.Select(e => e.DateKey));
+
+        for (int i = 6; i >= 0; i--)
+        {
+            var date = today.AddDays(-i);
+            var dateKey = date.ToString("yyyy-MM-dd");
+            _weeklyActivity.Add(new WeeklyActivityData
+            {
+                DayName = date.ToString("ddd"),
+                Count = entryDateKeys.Contains(dateKey) ? 1 : 0,
+                Date = date
+            });
         }
     }
 
@@ -1484,11 +1681,6 @@
         return date.ToString("MMM d");
     }
 
-    private string TruncateText(string text, int maxLength)
-    {
-        if (string.IsNullOrEmpty(text)) return "";
-        return text.Length <= maxLength ? text : text.Substring(0, maxLength) + "...";
-    }
 
     private class WeeklyActivityData
     {

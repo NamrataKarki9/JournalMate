@@ -1,5 +1,5 @@
 @page "/profile"
-@using JournalMaui.Services
+@using JournalMate.Services
 @using JournalMaui.Models
 @inject JournalDatabase Db
 @inject JournalMate.Services.AppCurrentState AppState
@@ -574,7 +574,7 @@
 </style>
 
 @code {
-    @inject JournalMaui.Services.AuthService AuthService
+    @inject JournalMate.Services.AuthService AuthService
 
     private int _totalEntries = 0;
     private int _totalWords = 0;

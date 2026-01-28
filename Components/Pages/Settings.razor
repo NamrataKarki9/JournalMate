@@ -1,5 +1,5 @@
 @page "/settings"
-@using JournalMaui.Services
+
 @inject JournalDatabase Db
 @inject JournalMate.Services.AppCurrentState AppState
 @inject AuthService AuthService
@@ -41,9 +41,9 @@
             <div class="setting-item">
                 <div class="setting-info">
                     <h3>@(AppState.IsDarkMode ? "Dark Mode" : "Light Mode")</h3>
-                    <p>@(AppState.IsDarkMode 
-                        ? "Switch to light mode for better visibility in bright environments" 
-                        : "Switch to dark mode for comfortable viewing in low-light conditions")</p>
+                    <p>@(AppState.IsDarkMode
+                                                ? "Switch to light mode for better visibility in bright environments"
+                                                : "Switch to dark mode for comfortable viewing in low-light conditions")</p>
                 </div>
                 <div class="setting-control">
                     <MudSwitch Value="@AppState.IsDarkMode" ValueChanged="@((bool v) => AppState.SetTheme(v))"
@@ -90,15 +90,6 @@
                 </div>
                 <button class="setting-btn danger" @onclick="LogOut">
                     Log Out
-                </button>
-            </div>
-            <div class="setting-item">
-                <div class="setting-info">
-                    <h3>Reset All Data</h3>
-                    <p class="text-error">Permanently wipe all journal entries and settings</p>
-                </div>
-                <button class="setting-btn danger-filled" @onclick="ShowResetModal">
-                    Reset App
                 </button>
             </div>
         </div>
@@ -173,8 +164,10 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label>New Name</label>
-                    <input type="text" class="text-input" @bind="_newName" placeholder="Enter new name" />
+                    <label>New Name (Letters only)</label>
+                    <input type="text" class="text-input" value="@_newName" @oninput="OnSettingsNameInput"
+                        placeholder="Enter new name" />
+
                 </div>
             </div>
             <div class="modal-footer">
@@ -185,34 +178,6 @@
     </div>
 }
 
-<!-- Factory Reset Confirmation Modal -->
-@if (_showResetModal)
-{
-    <div class="modal-overlay" @onclick="() => _showResetModal = false">
-        <div class="modal-card glass-card danger-border" @onclick:stopPropagation="true">
-            <div class="modal-header">
-                <h3 class="text-error">⚠️ Factory Reset</h3>
-                <button class="modal-close" @onclick="() => _showResetModal = false">✕</button>
-            </div>
-            <div class="modal-body">
-                <p class="warning-text">
-                    This action is <strong>irreversible</strong>. You will lose:
-                </p>
-                <ul class="warning-list">
-                    <li>All journal entries and memories</li>
-                    <li>Mood analytics and statistics</li>
-                    <li>Security PIN and Profile Picture</li>
-                    <li>Custom app settings</li>
-                </ul>
-                <p class="confirmation-text">Are you absolutely sure you want to start from scratch?</p>
-            </div>
-            <div class="modal-footer">
-                <button class="btn-cancel" @onclick="() => _showResetModal = false">Cancel</button>
-                <button class="btn-danger" @onclick="PerformReset">Delete Everything</button>
-            </div>
-        </div>
-    </div>
-}
 
 <style>
     .settings-page {
@@ -423,9 +388,12 @@
     }
 
     @@keyframes heartbeat {
-        0%, 100% {
+
+        0%,
+        100% {
             transform: scale(1);
         }
+
         50% {
             transform: scale(1.1);
         }
@@ -477,6 +445,9 @@
         width: 90%;
         max-width: 400px;
         padding: 0;
+        /* Fix transparency issue */
+        background-color: var(--jm-bg-elevated);
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
     }
 
     .modal-header {
@@ -518,7 +489,8 @@
         margin-bottom: 8px;
     }
 
-    .pin-input, .text-input {
+    .pin-input,
+    .text-input {
         width: 100%;
         padding: 12px;
         background: var(--jm-surface);
@@ -535,7 +507,8 @@
         font-size: 18px;
     }
 
-    .pin-input:focus, .text-input:focus {
+    .pin-input:focus,
+    .text-input:focus {
         border-color: var(--jm-accent);
     }
 
@@ -644,7 +617,6 @@
 @code {
     private bool _showChangePinModal = false;
     private bool _showChangeNameModal = false;
-    private bool _showResetModal = false;
     private string _newName = "";
     private string _currentPin = "";
     private string _newPin = "";
@@ -738,12 +710,11 @@
             {
                 _pinMessage = result.message;
                 _pinError = true;
-                ToastFactory.ShowToast(result.message, ToastType.Error);
             }
         }
-        catch(Exception ex)
+        catch (Exception ex)
         {
-             ToastFactory.ShowToast($"Failed to change PIN: {ex.Message}", ToastType.Error);
+            ToastFactory.ShowToast($"Failed to change PIN: {ex.Message}", ToastType.Error);
         }
     }
 
@@ -760,34 +731,36 @@
         _showChangeNameModal = true;
     }
 
-    private void ChangeName()
+    private async Task ChangeName()
     {
         if (!string.IsNullOrWhiteSpace(_newName))
         {
+            // Validate again just in case
+            if (!System.Text.RegularExpressions.Regex.IsMatch(_newName, @"^[a-zA-Z\s]*$"))
+            {
+                ToastFactory.ShowToast("Name can only contain letters and spaces.", ToastType.Warning);
+                return;
+            }
+
+            // Persist to Database
+            await AuthService.UpdateDisplayNameAsync(_newName);
+            // Update Local State
             AppState.UpdateUserDisplayName(_newName);
+
             _showChangeNameModal = false;
             ToastFactory.ShowToast("Display name updated", ToastType.Success);
         }
     }
-
-    private void ShowResetModal()
+    private void OnSettingsNameInput(ChangeEventArgs e)
     {
-        _showResetModal = true;
-    }
-
-    private async Task PerformReset()
-    {
-        try
+        var input = e.Value?.ToString() ?? "";
+        var sanitized = new string(input.Where(c => char.IsLetter(c) || char.IsWhiteSpace(c)).ToArray());
+        
+        if (input != sanitized)
         {
-            await Db.WipeDatabaseAsync();
-            AppState.ResetAllData();
-            _showResetModal = false;
-            NavManager.NavigateTo("/", replace: true);
+            ToastFactory.ShowToast("Please enter letters only.", ToastType.Warning);
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Settings] Error during PerformReset: {ex.Message}");
-            NavManager.NavigateTo("/", replace: true);
-        }
+        
+        _newName = sanitized;
     }
-}     
+}

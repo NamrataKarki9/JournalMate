@@ -1,5 +1,5 @@
 @page "/export"
-@using JournalMaui.Services
+@using JournalMate.Services
 @using JournalMaui.Models
 @using JournalMate.Services
 @inject JournalDatabase Db
@@ -594,7 +594,7 @@
 
             if (savedPath != null)
             {
-                _message = $"✓ PDF exported successfully! File saved to: {savedPath}";
+                //_message = $"✓ PDF exported successfully! File saved to: {savedPath}";
                 _isError = false;
                 ToastFactory.ShowToast("Export successful!", ToastType.Success);
             }

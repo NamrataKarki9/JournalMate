@@ -1,5 +1,5 @@
 @page "/calendar"
-@using JournalMaui.Services
+@using JournalMate.Services
 @using JournalMaui.Models
 @inject JournalDatabase Db
 @inject NavigationManager NavManager
@@ -113,7 +113,7 @@
                                                 @GetMoodIcon(entry.PrimaryMood) @entry.PrimaryMood
                                             </span>
                                         </div>
-                                        <p class="item-snippet">@TruncateText(entry.Content, 120)</p>
+                                        <p class="item-snippet">@entry.GetPlainTextSnippet(120)</p>
                                         <div class="item-footer">
                                             <span class="item-time">@entry.CreatedAt.ToString("h:mm tt")</span>
                                             @if (entry.GetTagsList().Any())
@@ -203,7 +203,7 @@
                 <h4 class="preview-title">@_selectedEntry.Title</h4>
 
                 <p class="preview-content">
-                    "@TruncateText(_selectedEntry.Content, 200)"
+                    "@_selectedEntry.GetPlainTextSnippet(200)"
                 </p>
 
                 @if (_selectedEntry.GetTagsList().Any())
@@ -966,9 +966,5 @@
         };
     }
 
-    private string TruncateText(string text, int maxLength)
-    {
-        if (string.IsNullOrEmpty(text)) return "";
-        return text.Length <= maxLength ? text : text.Substring(0, maxLength) + "...";
-    }
+
 }

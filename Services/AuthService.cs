@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using JournalMaui.Models;
 
-namespace JournalMaui.Services;
+namespace JournalMate.Services;
 
 /// <summary>
 /// Authentication service for PIN-based security.
@@ -30,7 +30,7 @@ public class AuthService
     /// <summary>
     /// Set up a new PIN (first time)
     /// </summary>
-    public async Task<bool> SetupPinAsync(string pin, string displayName)
+    public async Task<bool> SetupPinAsync(string pin, string displayName, string email)
     {
         if (string.IsNullOrWhiteSpace(pin) || pin.Length != 4)
             return false;
@@ -45,6 +45,7 @@ public class AuthService
         var user = new User
         {
             DisplayName = displayName,
+            Email = email,
             PinHash = hash,
             Salt = salt,
             CreatedAt = DateTime.Now,
@@ -135,6 +136,35 @@ public class AuthService
         await _database.SaveUserAsync(user);
 
         return (true, "PIN changed successfully!");
+    }
+
+    /// <summary>
+    /// Verify if the provided email matches the user's email
+    /// </summary>
+    public async Task<bool> VerifyEmailAsync(string email)
+    {
+        var user = await _database.GetUserAsync();
+        if (user == null || string.IsNullOrWhiteSpace(user.Email)) return false;
+        return string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Force set a new PIN (used after recovery)
+    /// </summary>
+    public async Task<bool> OverwritePinAsync(string newPin)
+    {
+        if (string.IsNullOrWhiteSpace(newPin) || newPin.Length != 4 || !newPin.All(char.IsDigit))
+            return false;
+
+        var user = await _database.GetUserAsync();
+        if (user == null) return false;
+
+        user.Salt = GenerateSalt();
+        user.PinHash = HashPin(newPin, user.Salt);
+        user.FailedAttempts = 0;
+        user.LockedUntil = null;
+        await _database.SaveUserAsync(user);
+        return true;
     }
 
     /// <summary>

@@ -1,7 +1,7 @@
 ﻿using SQLite;
 using JournalMaui.Models;
 
-namespace JournalMaui.Services;
+namespace JournalMate.Services;
 
 /// <summary>
 /// Database service for all journal-related CRUD operations.
@@ -12,21 +12,37 @@ public class JournalDatabase
     private SQLiteAsyncConnection _connection;
     private readonly string _dbPath;
     private readonly JournalMate.Services.AppCurrentState _appState;
+    private readonly SemaphoreSlim _initializationSemaphore = new(1, 1);
+    private bool _isInitialized;
 
     public JournalDatabase(string dbPath, JournalMate.Services.AppCurrentState appState)
     {
         _dbPath = dbPath;
-        _connection = new SQLiteAsyncConnection(dbPath);
+        _connection = new SQLiteAsyncConnection(dbPath, SQLiteOpenFlags.ReadWrite | SQLiteOpenFlags.Create | SQLiteOpenFlags.SharedCache);
         _appState = appState;
     }
 
     /// <summary>
-    /// Initialize database tables
+    /// Initialize database tables (internal lazy init)
     /// </summary>
     public async Task InitAsync()
     {
-        await _connection.CreateTableAsync<JournalEntry>();
-        await _connection.CreateTableAsync<User>();
+        if (_isInitialized) return;
+
+        await _initializationSemaphore.WaitAsync();
+        try
+        {
+            if (_isInitialized) return;
+
+            await _connection.CreateTableAsync<JournalEntry>();
+            await _connection.CreateTableAsync<User>();
+            
+            _isInitialized = true;
+        }
+        finally
+        {
+            _initializationSemaphore.Release();
+        }
     }
 
 
@@ -38,6 +54,7 @@ public class JournalDatabase
     /// </summary>
     public async Task<JournalEntry?> GetByDateAsync(DateTime date)
     {
+        await InitAsync();
         var formattedKey = FormatDateKey(date);
         return await _connection.Table<JournalEntry>()
                   .Where(x => x.DateKey == formattedKey)
@@ -49,6 +66,7 @@ public class JournalDatabase
     /// </summary>
     public async Task<JournalEntry?> GetByIdAsync(int id)
     {
+        await InitAsync();
         return await _connection.Table<JournalEntry>()
                   .Where(x => x.Id == id)
                   .FirstOrDefaultAsync();
@@ -59,6 +77,7 @@ public class JournalDatabase
     /// </summary>
     public async Task SaveAsync(JournalEntry entry)
     {
+        await InitAsync();
         var formattedKey = FormatDateKey(DateTime.Parse(entry.DateKey));
         var timestamp = DateTime.Now;
 
@@ -119,6 +138,7 @@ public class JournalDatabase
     /// </summary>
     public async Task<int> DeleteAsync(DateTime date)
     {
+        await InitAsync();
         var formattedKey = FormatDateKey(date);
         var entryToDelete = await _connection.Table<JournalEntry>()
                                 .Where(x => x.DateKey == formattedKey)
@@ -139,6 +159,7 @@ public class JournalDatabase
     /// </summary>
     public async Task<int> DeleteByIdAsync(int id)
     {
+        await InitAsync();
         Console.WriteLine($"[JournalDatabase] DeleteByIdAsync called for ID: {id}");
         var entryToDelete = await _connection.Table<JournalEntry>()
                                 .Where(x => x.Id == id)
@@ -169,6 +190,7 @@ public class JournalDatabase
     /// </summary>
     public async Task<List<JournalEntry>> GetAllEntriesAsync()
     {
+        await InitAsync();
         return await _connection.Table<JournalEntry>()
                         .OrderByDescending(x => x.DateKey)
                         .ToListAsync();
@@ -179,6 +201,7 @@ public class JournalDatabase
     /// </summary>
     public async Task<List<JournalEntry>> GetRecentAsync(int take = 20)
     {
+        await InitAsync();
         return await _connection.Table<JournalEntry>()
                         .OrderByDescending(x => x.UpdatedAt)
                         .Take(take)
@@ -190,6 +213,7 @@ public class JournalDatabase
     /// </summary>
     public async Task<List<JournalEntry>> GetEntriesByDateRangeAsync(DateTime startDate, DateTime endDate)
     {
+        await InitAsync();
         var startKey = FormatDateKey(startDate);
         var endKey = FormatDateKey(endDate);
 
@@ -202,6 +226,7 @@ public class JournalDatabase
     /// </summary>
     public async Task<List<JournalEntry>> GetEntriesByMoodCategoryAsync(string moodCategory)
     {
+        await InitAsync();
         return await _connection.Table<JournalEntry>()
                         .Where(x => x.MoodCategory == moodCategory)
                         .OrderByDescending(x => x.DateKey)
@@ -213,6 +238,7 @@ public class JournalDatabase
     /// </summary>
     public async Task<List<JournalEntry>> GetEntriesByMoodAsync(string mood)
     {
+        await InitAsync();
         return await _connection.Table<JournalEntry>()
                         .Where(x => x.PrimaryMood == mood ||
                                     x.SecondaryMood1 == mood ||
@@ -243,6 +269,7 @@ public class JournalDatabase
     /// </summary>
     public async Task<int> GetEntryCountAsync()
     {
+        await InitAsync();
         return await _connection.Table<JournalEntry>().CountAsync();
     }
 
@@ -251,6 +278,7 @@ public class JournalDatabase
     /// </summary>
     public async Task<List<string>> GetAllEntryDatesAsync()
     {
+        await InitAsync();
         var entries = await _connection.Table<JournalEntry>()
                               .ToListAsync();
         return entries.Select(x => x.DateKey).ToList();
@@ -457,6 +485,7 @@ public class JournalDatabase
     /// </summary>
     public async Task<User?> GetUserAsync()
     {
+        await InitAsync();
         return await _connection.Table<User>().FirstOrDefaultAsync();
     }
 
@@ -465,6 +494,7 @@ public class JournalDatabase
     /// </summary>
     public async Task SaveUserAsync(User user)
     {
+        await InitAsync();
         var existingUser = await GetUserAsync();
 
         if (existingUser == null)
@@ -505,14 +535,15 @@ public class JournalDatabase
             }
 
             // Re-create the connection object for a fresh start
-            _connection = new SQLiteAsyncConnection(_dbPath);
+            _isInitialized = false;
+            _connection = new SQLiteAsyncConnection(_dbPath, SQLiteOpenFlags.ReadWrite | SQLiteOpenFlags.Create | SQLiteOpenFlags.SharedCache);
             await InitAsync();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[JournalDatabase] Error during WipeDatabaseAsync: {ex.Message}");
             // Attempt to re-establish connection even if delete failed
-            _connection = new SQLiteAsyncConnection(_dbPath);
+            _connection = new SQLiteAsyncConnection(_dbPath, SQLiteOpenFlags.ReadWrite | SQLiteOpenFlags.Create | SQLiteOpenFlags.SharedCache);
             throw;
         }
     }
